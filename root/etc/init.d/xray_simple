@@ -76,15 +76,17 @@ write_config() {
 
 write_nft() {
 	local tproxy_port mark outbound_mark mark_h outbound_mark_h proxy_lan_dns proxy_router_output
-	local bypass_ipv4 bypass_ipv6 nft_mode lan_ifaces bypass_uids bypass_gids
+	local bypass_ipv4 bypass_ipv6 nft_mode lan_ifaces bypass_uids bypass_gids wrap_table
 
 	nft_mode="$(uci_get nft_mode firewall4)"
 	if [ "$nft_mode" = "direct" ]; then
 		NFT_FILE="${RUNDIR}/direct_xray_simple.nft"
 		rm -f "${RUNDIR}"/fw4/*.nft
+		wrap_table=1
 	else
 		NFT_FILE="${RUNDIR}/fw4/01_xray_simple.nft"
 		rm -f "${RUNDIR}/direct_xray_simple.nft"
+		wrap_table=0
 	fi
 	tproxy_port="$(uci_get tproxy_port 12345)"
 	mark="$(uci_get mark 1)"
@@ -100,8 +102,13 @@ write_nft() {
 	bypass_gids="$(nft_set_body "$(uci_list bypass_gids)" "")"
 
 	mkdir -p "$(dirname "$NFT_FILE")"
-	cat > "$NFT_FILE" <<-EOF
+	: > "$NFT_FILE"
+	if [ "$wrap_table" = "1" ]; then
+		cat >> "$NFT_FILE" <<-EOF
 	table inet xray_simple {
+	EOF
+	fi
+	cat >> "$NFT_FILE" <<-EOF
 	    set bypass_ipv4 {
 	        type ipv4_addr
 	        flags interval
@@ -114,7 +121,7 @@ write_nft() {
 	        elements = { ${bypass_ipv6} }
 	    }
 
-	    chain prerouting {
+	    chain xray_simple_prerouting {
 	        type filter hook prerouting priority filter +10; policy accept;
 
 	        meta mark ${outbound_mark_h} return
@@ -165,7 +172,7 @@ write_nft() {
 	if [ "$proxy_router_output" = "1" ]; then
 		cat >> "$NFT_FILE" <<-EOF
 
-	    chain output {
+	    chain xray_simple_output {
 	        type route hook output priority filter +10; policy accept;
 
 	        meta mark ${outbound_mark_h} return
@@ -194,9 +201,11 @@ write_nft() {
 	EOF
 	fi
 
-	cat >> "$NFT_FILE" <<-EOF
+	if [ "$wrap_table" = "1" ]; then
+		cat >> "$NFT_FILE" <<-EOF
 	}
 	EOF
+	fi
 }
 
 setup_routes() {
@@ -285,8 +294,10 @@ reload_service() {
 }
 
 status_service() {
-	if [ -s "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
-		echo "Xray Simple running, pid $(cat "$PIDFILE")"
+	local pids
+	pids="$(xray_pids)"
+	if [ -n "$pids" ]; then
+		echo "Xray Simple running, pid ${pids}"
 	else
 		echo "Xray Simple is not running"
 	fi
@@ -298,6 +309,10 @@ status_service() {
 	echo
 	ip rule show | grep -E "fwmark|$(uci_get route_table_v4 100)" || true
 	ip -6 rule show | grep -E "fwmark|$(uci_get route_table_v6 106)" || true
+}
+
+xray_pids() {
+	ps w 2>/dev/null | awk '/[x]ray .*run .*confdir \\/var\\/etc\\/xray-simple/ { printf "%s%s", sep, $1; sep=" " }'
 }
 
 test_config() {
@@ -326,8 +341,12 @@ test_config() {
 }
 
 nft_status() {
-	echo "=== nft table inet xray_simple ==="
+	echo "=== direct nft table inet xray_simple ==="
 	nft list table inet xray_simple 2>&1 || true
+	echo
+	echo "=== firewall4 xray_simple chains ==="
+	nft list chain inet fw4 xray_simple_prerouting 2>&1 || true
+	nft list chain inet fw4 xray_simple_output 2>&1 || true
 	echo
 	echo "=== generated firewall4 rules ==="
 	cat "${RUNDIR}/fw4/01_xray_simple.nft" 2>/dev/null || echo "not generated"
@@ -376,7 +395,7 @@ export_profile() {
 start_now() {
 	uci set "${NAME}.@general[0].enabled=1"
 	uci commit "$NAME"
-	start
+	start || return 1
 	echo "Xray Simple start requested."
 }
 
@@ -390,7 +409,7 @@ stop_now() {
 restart_now() {
 	uci set "${NAME}.@general[0].enabled=1"
 	uci commit "$NAME"
-	reload_service
+	reload_service || return 1
 	echo "Xray Simple restart requested."
 }
 
