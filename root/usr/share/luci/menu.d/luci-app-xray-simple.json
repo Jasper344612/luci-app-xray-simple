@@ -1,0 +1,17 @@
+{
+    "admin/services/xray_simple": {
+        "title": "Xray Simple",
+        "action": {
+            "type": "view",
+            "path": "xray-simple/core"
+        },
+        "depends": {
+            "acl": [
+                "luci-app-xray-simple"
+            ],
+            "uci": {
+                "xray_simple": true
+            }
+        }
+    }
+}

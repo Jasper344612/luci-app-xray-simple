@@ -1,0 +1,10 @@
+#!/bin/sh
+uci get xray_simple.@general[-1] >/dev/null 2>&1 || uci add xray_simple general >/dev/null 2>&1
+uci commit xray_simple
+uci -q batch <<-EOF >/dev/null
+	delete ucitrack.@xray_simple[-1]
+	add ucitrack xray_simple
+	set ucitrack.@xray_simple[-1].init=xray_simple
+	commit ucitrack
+EOF
+exit 0

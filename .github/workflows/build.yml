@@ -1,0 +1,154 @@
+name: Build OpenWrt Package
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "*"
+  pull_request:
+  workflow_dispatch:
+
+env:
+  PACKAGE_NAME: luci-app-xray-simple
+  OPENWRT_VERSION: 23.05.5
+  CACHE_DIR: ~/cache
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }} on OpenWrt ${{ env.OPENWRT_VERSION }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            sdk_url_path: https://downloads.openwrt.org/releases/23.05.5/targets/x86/64
+            sdk_name: -sdk-23.05.5-x86-64_
+          - arch: armv8a
+            sdk_url_path: https://downloads.openwrt.org/releases/23.05.5/targets/armsr/armv8
+            sdk_name: -sdk-23.05.5-armsr-armv8_
+
+    env:
+      SDK_URL_PATH: ${{ matrix.sdk_url_path }}
+      SDK_NAME: ${{ matrix.sdk_name }}
+      CCACHE_DIR: ~/.ccache
+      CONFIG_CCACHE: y
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          DEBIAN_FRONTEND=noninteractive sudo apt-get install -y \
+            build-essential \
+            ccache \
+            file \
+            gawk \
+            gettext \
+            git \
+            libncurses5-dev \
+            libssl-dev \
+            python3 \
+            rsync \
+            unzip \
+            wget \
+            xsltproc \
+            zstd
+
+      - name: Prepare cache paths
+        run: |
+          CACHE_DIR_SDK="$(eval echo "$CACHE_DIR/sdk")"
+          CACHE_DIR_DL="$(eval echo "$CACHE_DIR/dl")"
+          CACHE_DIR_FEEDS="$(eval echo "$CACHE_DIR/feeds")"
+          mkdir -p "$CACHE_DIR_SDK" "$CACHE_DIR_DL" "$CACHE_DIR_FEEDS"
+          echo "CACHE_DIR_SDK=$CACHE_DIR_SDK" >> "$GITHUB_ENV"
+          echo "CACHE_DIR_DL=$CACHE_DIR_DL" >> "$GITHUB_ENV"
+          echo "CACHE_DIR_FEEDS=$CACHE_DIR_FEEDS" >> "$GITHUB_ENV"
+          echo "SDK_HOME=$(mktemp -d)" >> "$GITHUB_ENV"
+
+      - name: Restore OpenWrt cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.CACHE_DIR }}
+            ${{ env.CCACHE_DIR }}
+          key: openwrt-${{ env.OPENWRT_VERSION }}-${{ matrix.arch }}-${{ env.PACKAGE_NAME }}-${{ github.run_id }}
+          restore-keys: |
+            openwrt-${{ env.OPENWRT_VERSION }}-${{ matrix.arch }}-${{ env.PACKAGE_NAME }}-
+
+      - name: Download and verify SDK
+        run: |
+          cd "$CACHE_DIR_SDK"
+          if ! wget -q -O - "$SDK_URL_PATH/sha256sums" | grep -- "$SDK_NAME" > sha256sums.small; then
+            echo "::error::Can not find SDK matching ${SDK_NAME} in ${SDK_URL_PATH}/sha256sums"
+            exit 1
+          fi
+          SDK_FILE="$(cut -d' ' -f2 sha256sums.small | sed 's/*//g')"
+          if ! sha256sum -c sha256sums.small >/dev/null 2>&1; then
+            rm -f "$SDK_FILE"
+            wget -q -O "$SDK_FILE" "$SDK_URL_PATH/$SDK_FILE"
+            sha256sum -c sha256sums.small
+          fi
+          file "$SDK_FILE"
+          tar -C "$SDK_HOME" --strip=1 -xf "$SDK_FILE"
+
+      - name: Prepare SDK feeds
+        run: |
+          cd "$SDK_HOME"
+          rm -rf dl feeds
+          ln -s "$CACHE_DIR_DL" dl
+          ln -s "$CACHE_DIR_FEEDS" feeds
+          cp feeds.conf.default feeds.conf
+          sed -i 's#git.openwrt.org/openwrt/openwrt#github.com/openwrt/openwrt#' feeds.conf
+          sed -i 's#git.openwrt.org/feed/packages#github.com/openwrt/packages#' feeds.conf
+          sed -i 's#git.openwrt.org/project/luci#github.com/openwrt/luci#' feeds.conf
+          sed -i 's#git.openwrt.org/feed/routing#github.com/openwrt/routing#' feeds.conf
+          sed -i 's#git.openwrt.org/feed/telephony#github.com/openwrt/telephony#' feeds.conf
+          ./scripts/feeds update -a
+          ln -s "$GITHUB_WORKSPACE" "package/$PACKAGE_NAME"
+          ./scripts/feeds install -a
+
+      - name: Build package
+        run: |
+          cd "$SDK_HOME"
+          make defconfig
+          make package/${PACKAGE_NAME}/{clean,compile} V=s
+          find "$SDK_HOME/bin" -type f \( -name "${PACKAGE_NAME}*.ipk" -o -name "${PACKAGE_NAME}*.apk" \) -exec ls -lh {} \;
+
+      - name: Collect packages
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          find "$SDK_HOME/bin" -type f \( -name "${PACKAGE_NAME}*.ipk" -o -name "${PACKAGE_NAME}*.apk" \) | while read -r file; do
+            base="$(basename "$file")"
+            cp "$file" "$GITHUB_WORKSPACE/artifacts/${base%.*}-${{ matrix.arch }}.${base##*.}"
+          done
+          find "$GITHUB_WORKSPACE/artifacts" -type f -exec ls -lh {} \;
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_NAME }}-${{ matrix.arch }}
+          path: artifacts/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*

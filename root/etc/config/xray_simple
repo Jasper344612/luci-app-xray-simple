@@ -1,0 +1,86 @@
+config general
+	option enabled '0'
+	option xray_bin '/usr/bin/xray'
+	option nft_mode 'firewall4'
+	option tproxy_port '12345'
+	option mark '1'
+	option route_table_v4 '100'
+	option route_table_v6 '106'
+	option outbound_mark '255'
+	option proxy_lan_dns '1'
+	option proxy_router_output '1'
+	option active_profile ''
+	option import_profile_name ''
+	option import_json ''
+	list lan_ifaces 'br-lan'
+	list bypass_ipv4 '0.0.0.0/32'
+	list bypass_ipv6 '::/128'
+	option json_config '{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "tproxy-in",
+      "listen": "0.0.0.0",
+      "port": 12345,
+      "protocol": "dokodemo-door",
+      "settings": {
+        "network": "tcp,udp",
+        "followRedirect": true
+      },
+      "streamSettings": {
+        "sockopt": {
+          "tproxy": "tproxy"
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "direct",
+      "protocol": "freedom",
+      "streamSettings": {
+        "sockopt": {
+          "mark": 255
+        }
+      }
+    }
+  ]
+}'
+
+config profile
+	option name 'default'
+	option json_config '{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "tproxy-in",
+      "listen": "0.0.0.0",
+      "port": 12345,
+      "protocol": "dokodemo-door",
+      "settings": {
+        "network": "tcp,udp",
+        "followRedirect": true
+      },
+      "streamSettings": {
+        "sockopt": {
+          "tproxy": "tproxy"
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "direct",
+      "protocol": "freedom",
+      "streamSettings": {
+        "sockopt": {
+          "mark": 255
+        }
+      }
+    }
+  ]
+}'

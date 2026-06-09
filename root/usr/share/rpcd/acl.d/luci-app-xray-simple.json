@@ -1,0 +1,37 @@
+{
+    "luci-app-xray-simple": {
+        "description": "Grant access to Xray Simple configuration and process controls",
+        "read": {
+            "uci": [
+                "xray_simple"
+            ],
+            "file": {
+                "/etc/init.d/xray_simple": [
+                    "exec"
+                ],
+                "/var/run/xray-simple.pid": [
+                    "read"
+                ],
+                "/var/etc/xray-simple/config.json": [
+                    "read"
+                ],
+                "/var/etc/xray-simple/fw4/01_xray_simple.nft": [
+                    "read"
+                ],
+                "/var/etc/xray-simple/direct_xray_simple.nft": [
+                    "read"
+                ]
+            }
+        },
+        "write": {
+            "uci": [
+                "xray_simple"
+            ],
+            "file": {
+                "/etc/init.d/xray_simple": [
+                    "exec"
+                ]
+            }
+        }
+    }
+}
