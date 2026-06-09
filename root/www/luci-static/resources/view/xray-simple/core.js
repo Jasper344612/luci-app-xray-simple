@@ -310,9 +310,9 @@ return view.extend({
             return E('pre', { 'style': 'white-space: pre-wrap' }, (status.stdout || _('Status unavailable')) + (status.stderr ? '\n' + status.stderr : ''));
         };
 
-        commandButton(s, 'process', _('Start'), 'start', 'apply');
-        commandButton(s, 'process', _('Stop'), 'stop', 'reset');
-        commandButton(s, 'process', _('Restart'), 'restart', 'reload');
+        commandButton(s, 'process', _('Start'), 'start_now', 'apply');
+        commandButton(s, 'process', _('Stop'), 'stop_now', 'reset');
+        commandButton(s, 'process', _('Restart'), 'restart_now', 'reload');
         commandButton(s, 'process', _('Validate config'), 'test_config', 'action');
         commandButton(s, 'process', _('nftables status'), 'nft_status', 'action');
 

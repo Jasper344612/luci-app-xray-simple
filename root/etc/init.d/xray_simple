@@ -302,13 +302,27 @@ status_service() {
 
 test_config() {
 	local xray_bin
+	local output
 	xray_bin="$(uci_get xray_bin /usr/bin/xray)"
 	command -v "$xray_bin" >/dev/null 2>&1 || {
 		echo "xray binary not found: $xray_bin"
 		return 1
 	}
 	write_config
-	"$xray_bin" test -confdir "$RUNDIR" 2>&1 || "$xray_bin" run -test -confdir "$RUNDIR" 2>&1
+	output="$("$xray_bin" test -confdir "$RUNDIR" 2>&1)"
+	if [ "$?" = "0" ]; then
+		printf "%s\n" "$output"
+		return 0
+	fi
+
+	output="$("$xray_bin" run -test -confdir "$RUNDIR" 2>&1)"
+	if [ "$?" = "0" ]; then
+		printf "%s\n" "$output"
+		return 0
+	fi
+
+	printf "%s\n" "$output"
+	return 1
 }
 
 nft_status() {
@@ -359,10 +373,34 @@ export_profile() {
 	printf "%s\n" "$json"
 }
 
+start_now() {
+	uci set "${NAME}.@general[0].enabled=1"
+	uci commit "$NAME"
+	start
+	echo "Xray Simple start requested."
+}
+
+stop_now() {
+	uci set "${NAME}.@general[0].enabled=0"
+	uci commit "$NAME"
+	stop
+	echo "Xray Simple stopped and disabled in Xray Simple settings."
+}
+
+restart_now() {
+	uci set "${NAME}.@general[0].enabled=1"
+	uci commit "$NAME"
+	reload_service
+	echo "Xray Simple restart requested."
+}
+
 extra_command "test_config" "Validate active Xray JSON configuration"
 extra_command "nft_status" "Show nftables and policy routing status"
 extra_command "switch_profile" "Switch active profile and reload"
 extra_command "export_profile" "Print active or selected profile JSON"
+extra_command "start_now" "Enable in UCI and start"
+extra_command "stop_now" "Stop and disable in UCI"
+extra_command "restart_now" "Enable in UCI and restart"
 
 service_triggers() {
 	procd_add_reload_trigger "xray_simple"
