@@ -11,21 +11,25 @@ on:
 
 env:
   PACKAGE_NAME: luci-app-xray-simple
-  OPENWRT_VERSION: 23.05.5
   CACHE_DIR: ~/cache
+
+permissions:
+  contents: read
 
 jobs:
   build:
-    name: Build ${{ matrix.arch }} on OpenWrt ${{ env.OPENWRT_VERSION }}
+    name: Build ${{ matrix.arch }} on OpenWrt ${{ matrix.openwrt_version }}
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: x86_64
+            openwrt_version: 23.05.5
             sdk_url_path: https://downloads.openwrt.org/releases/23.05.5/targets/x86/64
             sdk_name: -sdk-23.05.5-x86-64_
           - arch: armv8a
+            openwrt_version: 23.05.5
             sdk_url_path: https://downloads.openwrt.org/releases/23.05.5/targets/armsr/armv8
             sdk_name: -sdk-23.05.5-armsr-armv8_
 
@@ -75,9 +79,9 @@ jobs:
           path: |
             ${{ env.CACHE_DIR }}
             ${{ env.CCACHE_DIR }}
-          key: openwrt-${{ env.OPENWRT_VERSION }}-${{ matrix.arch }}-${{ env.PACKAGE_NAME }}-${{ github.run_id }}
+          key: openwrt-${{ matrix.openwrt_version }}-${{ matrix.arch }}-${{ env.PACKAGE_NAME }}-${{ github.run_id }}
           restore-keys: |
-            openwrt-${{ env.OPENWRT_VERSION }}-${{ matrix.arch }}-${{ env.PACKAGE_NAME }}-
+            openwrt-${{ matrix.openwrt_version }}-${{ matrix.arch }}-${{ env.PACKAGE_NAME }}-
 
       - name: Download and verify SDK
         run: |
