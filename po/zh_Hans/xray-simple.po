@@ -71,6 +71,9 @@ msgstr "导入为新配置"
 msgid "Import profile name"
 msgstr "导入配置名称"
 
+msgid "Important: "
+msgstr "重要："
+
 msgid "Import profile description"
 msgstr "导入配置简介"
 

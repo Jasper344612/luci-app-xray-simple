@@ -124,6 +124,7 @@ function commandGroup(section, tab, id, label, buttons) {
     o.renderWidget = function () {
         return E('div', { 'class': 'cbi-button-group' }, buttons.map(function (button) {
             return E('button', {
+                'type': 'button',
                 'class': 'btn cbi-button cbi-button-' + (button.style || 'button'),
                 'click': function (ev) {
                     ev.preventDefault();
@@ -133,6 +134,18 @@ function commandGroup(section, tab, id, label, buttons) {
         }));
     };
     return o;
+}
+
+function jsonObjectValidator(value) {
+    try {
+        const parsed = JSON.parse(value || '{}');
+        if (Array.isArray(parsed) || parsed === null || typeof parsed !== 'object') {
+            return _('Xray config must be a JSON object');
+        }
+        return true;
+    } catch (e) {
+        return e.message;
+    }
 }
 
 return view.extend({
@@ -248,7 +261,11 @@ return view.extend({
         o.rawhtml = true;
         o.cfgvalue = function () {
             const outboundMark = generalConfig.outbound_mark || '255';
-            return E('div', { 'class': 'alert-message warning' }, [
+            return E('div', {
+                'class': 'cbi-value-description',
+                'style': 'border-left: 4px solid #f0ad4e; background: rgba(240, 173, 78, 0.12); padding: .75rem 1rem; border-radius: 6px; max-width: 70em'
+            }, [
+                E('strong', {}, _('Important: ')),
                 _('All Xray outbounds must set streamSettings.sockopt.mark to the Xray outbound bypass mark, otherwise traffic may loop back into TProxy. Current bypass mark: %s.').format(outboundMark)
             ]);
         };
@@ -283,15 +300,7 @@ return view.extend({
             }
         };
         jsonConfigOpt.validate = function (sectionId, value) {
-            try {
-                const parsed = JSON.parse(value);
-                if (Array.isArray(parsed) || parsed === null || typeof parsed !== 'object') {
-                    return _('Xray config must be a JSON object');
-                }
-                return true;
-            } catch (e) {
-                return e.message;
-            }
+            return jsonObjectValidator(value);
         };
         activeProfileOpt.onchange = function (ev, sectionId, value) {
             const profile = profileBySection(profiles, value);
@@ -379,12 +388,25 @@ return view.extend({
         o.modalonly = true;
         o.rmempty = true;
 
+        o = ss.option(form.TextValue, 'json_config', _('Profile JSON'));
+        o.modalonly = true;
+        o.rows = 20;
+        o.wrap = 'off';
+        o.rmempty = false;
+        o.cfgvalue = function (sectionId) {
+            return uci.get(variant, sectionId, 'json_config') || '{}';
+        };
+        o.validate = function (sectionId, value) {
+            return jsonObjectValidator(value);
+        };
+
         o = ss.option(form.DummyValue, '_profile_actions', _('Profile actions'));
         o.modalonly = false;
         o.rawhtml = true;
-        o.renderWidget = function (sectionId) {
+        o.textvalue = function (sectionId) {
             return E('div', { 'class': 'cbi-button-group' }, [
                 E('button', {
+                    'type': 'button',
                     'class': 'btn cbi-button cbi-button-apply',
                     'click': function (ev) {
                         ev.preventDefault();
@@ -401,6 +423,7 @@ return view.extend({
                     }
                 }, _('Switch & Restart')),
                 E('button', {
+                    'type': 'button',
                     'class': 'btn cbi-button cbi-button-action',
                     'click': function (ev) {
                         ev.preventDefault();
