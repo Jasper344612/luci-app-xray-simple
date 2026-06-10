@@ -359,10 +359,10 @@ return view.extend({
                     location.reload();
                 });
             }).catch(function (err) {
-                ui.showModal(_('Xray config validation failed'), [
-                    E('pre', { 'style': 'white-space: pre-wrap' }, commandErrorText(err) || _('Xray config validation failed')),
+                ui.showModal(_('Import profile failed'), [
+                    E('pre', { 'style': 'white-space: pre-wrap' }, commandErrorText(err) || _('Import profile failed')),
                     E('div', { 'class': 'right' }, [
-                        E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Close validation error'))
+                        E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Close import error'))
                     ])
                 ]);
             });

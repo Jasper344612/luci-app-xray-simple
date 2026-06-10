@@ -20,6 +20,9 @@
                 ],
                 "/var/etc/xray-simple/direct_xray_simple.nft": [
                     "read"
+                ],
+                "/tmp/xray-simple-import.json": [
+                    "read"
                 ]
             }
         },
