@@ -60,20 +60,6 @@ nft_string_set_body() {
 	echo "$out"
 }
 
-lan_cidrs() {
-	local family="$1"
-	local iface
-
-	for iface in $(uci_list lan_ifaces); do
-		[ -n "$iface" ] || continue
-		if [ "$family" = "4" ]; then
-			ip -o -4 addr show dev "$iface" scope global 2>/dev/null | awk '{ print $4 }'
-		else
-			ip -o -6 addr show dev "$iface" scope global 2>/dev/null | awk '{ print $4 }'
-		fi
-	done | sort -u
-}
-
 nft_write_set() {
 	local name="$1"
 	local type="$2"
@@ -111,7 +97,7 @@ write_config() {
 
 write_nft() {
 	local tproxy_port mark outbound_mark mark_h outbound_mark_h proxy_lan_dns proxy_router_output
-	local bypass_ipv4 bypass_ipv6 lan_ipv4 lan_ipv6 nft_mode lan_ifaces bypass_uids bypass_gids wrap_table
+	local bypass_ipv4 bypass_ipv6 nft_mode lan_ifaces bypass_uids bypass_gids wrap_table
 
 	nft_mode="$(uci_get nft_mode firewall4)"
 	if [ "$nft_mode" = "direct" ]; then
@@ -132,8 +118,6 @@ write_nft() {
 	proxy_router_output="$(uci_get proxy_router_output 1)"
 	bypass_ipv4="$(nft_set_body "$(uci_list bypass_ipv4)")"
 	bypass_ipv6="$(nft_set_body "$(uci_list bypass_ipv6)")"
-	lan_ipv4="$(nft_set_body "$(lan_cidrs 4)")"
-	lan_ipv6="$(nft_set_body "$(lan_cidrs 6)")"
 	lan_ifaces="$(nft_string_set_body "$(uci_list lan_ifaces)")"
 	bypass_uids="$(nft_set_body "$(uci_list bypass_uids)" "")"
 	bypass_gids="$(nft_set_body "$(uci_list bypass_gids)" "")"
@@ -147,8 +131,6 @@ write_nft() {
 	fi
 	nft_write_set "bypass_ipv4" "ipv4_addr" "$bypass_ipv4"
 	nft_write_set "bypass_ipv6" "ipv6_addr" "$bypass_ipv6"
-	nft_write_set "lan_ipv4" "ipv4_addr" "$lan_ipv4"
-	nft_write_set "lan_ipv6" "ipv6_addr" "$lan_ipv6"
 	cat >> "$NFT_FILE" <<-EOF
 	    chain xray_simple_prerouting {
 	        type filter hook prerouting priority mangle +10; policy accept;
@@ -163,16 +145,6 @@ write_nft() {
 	        ip6 daddr fc00::/7 udp dport != 53 return
 	        ip6 daddr @bypass_ipv6 return
 	EOF
-	if [ -n "$lan_ipv4" ]; then
-		cat >> "$NFT_FILE" <<-EOF
-	        ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } ip daddr != @lan_ipv4 return
-	EOF
-	fi
-	if [ -n "$lan_ipv6" ]; then
-		cat >> "$NFT_FILE" <<-EOF
-	        ip6 daddr fc00::/7 ip6 daddr != @lan_ipv6 return
-	EOF
-	fi
 
 	if [ "$proxy_lan_dns" = "1" ]; then
 		if [ -n "$lan_ifaces" ]; then
@@ -235,18 +207,6 @@ write_nft() {
 	        ip6 daddr fc00::/7 tcp dport != 53 return
 	        ip6 daddr fc00::/7 udp dport != 53 return
 	        ip6 daddr @bypass_ipv6 return
-	EOF
-		if [ -n "$lan_ipv4" ]; then
-			cat >> "$NFT_FILE" <<-EOF
-	        ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } ip daddr != @lan_ipv4 return
-	EOF
-		fi
-		if [ -n "$lan_ipv6" ]; then
-			cat >> "$NFT_FILE" <<-EOF
-	        ip6 daddr fc00::/7 ip6 daddr != @lan_ipv6 return
-	EOF
-		fi
-		cat >> "$NFT_FILE" <<-EOF
 	        meta l4proto { tcp, udp } meta mark set ${mark_h} accept
 	    }
 	EOF
@@ -319,6 +279,19 @@ flush_firewall() {
 	fi
 }
 
+rollback_firewall() {
+	local nft_mode
+	nft_mode="$(uci_get nft_mode firewall4)"
+
+	if [ "$nft_mode" = "direct" ]; then
+		nft delete table inet xray_simple 2>/dev/null
+		rm -f "${RUNDIR}/direct_xray_simple.nft"
+	else
+		rm -f "${RUNDIR}"/fw4/*.nft
+		/etc/init.d/firewall restart >/dev/null 2>&1
+	fi
+}
+
 ensure_fw4_include() {
 	mkdir -p "$(dirname "$FW4_INCLUDE")"
 	printf '%s\n' 'include "/var/etc/xray-simple/fw4/*.nft"' > "$FW4_INCLUDE"
@@ -340,6 +313,7 @@ start_service() {
 	write_nft
 	setup_routes
 	load_firewall || {
+		rollback_firewall
 		flush_routes
 		return 1
 	}
@@ -364,6 +338,7 @@ start_tproxy() {
 	write_nft
 	setup_routes
 	load_firewall || {
+		rollback_firewall
 		flush_routes
 		return 1
 	}
@@ -493,6 +468,33 @@ test_json_file() {
 	return 1
 }
 
+show_nft_chain() {
+	local family="$1"
+	local table="$2"
+	local chain="$3"
+	local output
+
+	output="$(nft list chain "$family" "$table" "$chain" 2>&1)"
+	if [ "$?" = "0" ]; then
+		printf "%s\n" "$output"
+	else
+		echo "${family} ${table} ${chain}: not loaded"
+	fi
+}
+
+show_nft_table() {
+	local family="$1"
+	local table="$2"
+	local output
+
+	output="$(nft list table "$family" "$table" 2>&1)"
+	if [ "$?" = "0" ]; then
+		printf "%s\n" "$output"
+	else
+		echo "${family} ${table}: not loaded"
+	fi
+}
+
 nft_status() {
 	local nft_mode
 	nft_mode="$(uci_get nft_mode firewall4)"
@@ -502,14 +504,14 @@ nft_status() {
 	echo
 	if [ "$nft_mode" = "direct" ]; then
 		echo "=== direct nft table inet xray_simple ==="
-		nft list table inet xray_simple 2>&1 || true
+		show_nft_table inet xray_simple
 		echo
 		echo "=== generated direct rules ==="
 		cat "${RUNDIR}/direct_xray_simple.nft" 2>/dev/null || echo "not generated"
 	else
 		echo "=== firewall4 xray_simple chains ==="
-		nft list chain inet fw4 xray_simple_prerouting 2>&1 || true
-		nft list chain inet fw4 xray_simple_output 2>&1 || true
+		show_nft_chain inet fw4 xray_simple_prerouting
+		show_nft_chain inet fw4 xray_simple_output
 		echo
 		echo "=== firewall4 include hook ==="
 		cat "$FW4_INCLUDE" 2>/dev/null || echo "missing: $FW4_INCLUDE"
@@ -541,8 +543,10 @@ switch_profile() {
 		return 1
 	}
 	uci set "${NAME}.@general[0].active_profile=${profile}"
+	uci set "${NAME}.@general[0].enabled=1"
 	uci commit "$NAME"
-	reload_service
+	reload_service || return 1
+	assert_running || return 1
 	echo "active profile switched to ${profile}"
 }
 

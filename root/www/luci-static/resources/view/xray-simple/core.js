@@ -156,7 +156,7 @@ return view.extend({
         const generalConfig = (uci.sections(variant, 'general') || [])[0] || {};
         const nftMode = generalConfig.nft_mode || 'firewall4';
         const m = new form.Map(variant, _('Xray Simple'), _('Minimal Xray TProxy management. Xray JSON remains user-owned; this page only manages process and TProxy plumbing.'));
-        let s, ss, o, activeProfileOpt, jsonConfigOpt, importNameOpt, importJsonOpt;
+        let s, ss, o, activeProfileOpt, jsonConfigOpt, importNameOpt, importDescriptionOpt, importJsonOpt;
 
         s = m.section(form.TypedSection, 'general');
         s.anonymous = true;
@@ -304,6 +304,10 @@ return view.extend({
         importNameOpt.placeholder = 'new-profile';
         importNameOpt.rmempty = true;
 
+        importDescriptionOpt = s.taboption('config', form.Value, 'import_profile_description', _('Import profile description'));
+        importDescriptionOpt.placeholder = _('Optional short profile note');
+        importDescriptionOpt.rmempty = true;
+
         importJsonOpt = s.taboption('config', form.TextValue, 'import_json', _('Import JSON as profile'));
         importJsonOpt.rows = 12;
         importJsonOpt.wrap = 'off';
@@ -316,6 +320,7 @@ return view.extend({
         o.inputstyle = 'apply';
         o.onclick = function (sectionId) {
             const name = importNameOpt.formvalue(sectionId) || 'imported';
+            const description = importDescriptionOpt.formvalue(sectionId) || '';
             const json = importJsonOpt.formvalue(sectionId) || '';
 
             return fs.write(importTestPath, json).then(function () {
@@ -323,9 +328,11 @@ return view.extend({
             }).then(function () {
                 const profileId = uci.add(variant, 'profile');
                 uci.set(variant, profileId, 'name', name);
+                uci.set(variant, profileId, 'description', description);
                 uci.set(variant, profileId, 'json_config', json);
                 uci.set(variant, sectionId, 'active_profile', profileId);
                 uci.set(variant, sectionId, 'import_profile_name', '');
+                uci.set(variant, sectionId, 'import_profile_description', '');
                 uci.set(variant, sectionId, 'import_json', '');
 
                 return uci.save().then(function () {
@@ -352,7 +359,18 @@ return view.extend({
         o = ss.option(form.Value, 'name', _('Profile name'));
         o.rmempty = false;
 
-        o = ss.option(form.DummyValue, '_profile_actions', _('Actions'));
+        o = ss.option(form.DummyValue, '_profile_summary', _('Description'));
+        o.modalonly = false;
+        o.textvalue = function (sectionId) {
+            const description = uci.get(variant, sectionId, 'description') || '';
+            return description || E('em', {}, _('No description'));
+        };
+
+        o = ss.option(form.Value, 'description', _('Description'));
+        o.modalonly = true;
+        o.rmempty = true;
+
+        o = ss.option(form.DummyValue, '_profile_actions', _('Profile actions'));
         o.modalonly = false;
         o.rawhtml = true;
         o.renderWidget = function (sectionId) {

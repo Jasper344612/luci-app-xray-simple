@@ -11,6 +11,7 @@ config general
 	option proxy_router_output '1'
 	option active_profile ''
 	option import_profile_name ''
+	option import_profile_description ''
 	option import_json ''
 	list lan_ifaces 'br-lan'
 	option json_config '{
@@ -49,6 +50,7 @@ config general
 
 config profile
 	option name 'default'
+	option description 'Default local TProxy inbound and direct outbound profile'
 	option json_config '{
   "log": {
     "loglevel": "warning"
