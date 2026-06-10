@@ -7,6 +7,7 @@
 
 const variant = 'xray_simple';
 const initScript = '/etc/init.d/xray_simple';
+const importTestPath = '/tmp/xray-simple-import.json';
 
 function parsePositiveInteger(value, name) {
     const n = Number(value);
@@ -53,6 +54,30 @@ function downloadText(filename, text) {
     URL.revokeObjectURL(url);
 }
 
+function profileLabel(profile) {
+    return profile.name || profile['.name'];
+}
+
+function profileBySection(profiles, sectionId) {
+    for (const profile of profiles) {
+        if (profile['.name'] === sectionId) {
+            return profile;
+        }
+    }
+    return null;
+}
+
+function currentProfileSection(profiles, configuredSection) {
+    if (profileBySection(profiles, configuredSection)) {
+        return configuredSection;
+    }
+    return profiles.length ? profiles[0]['.name'] : '';
+}
+
+function configFilename(name) {
+    return 'xray-simple-' + (name || 'current').replace(/[^A-Za-z0-9_.-]/g, '_') + '.json';
+}
+
 function commandButton(section, tab, label, command, style) {
     const o = section.taboption(tab, form.Button, '_' + command, label);
     o.inputstyle = style || 'button';
@@ -90,7 +115,7 @@ return view.extend({
         const generatedNft = loadResult[2];
         const profiles = uci.sections(variant, 'profile') || [];
         const m = new form.Map(variant, _('Xray Simple'), _('Minimal Xray TProxy management. Xray JSON remains user-owned; this page only manages process and TProxy plumbing.'));
-        let s, ss, o, importNameOpt, importJsonOpt;
+        let s, ss, o, activeProfileOpt, jsonConfigOpt, importNameOpt, importJsonOpt;
 
         s = m.section(form.TypedSection, 'general');
         s.anonymous = true;
@@ -178,18 +203,36 @@ return view.extend({
             return validateCidrList(value, 6);
         };
 
-        o = s.taboption('config', form.ListValue, 'active_profile', _('Active profile'));
-        o.value('', _('Use legacy JSON below'));
+        activeProfileOpt = s.taboption('config', form.ListValue, 'active_profile', _('Active profile'));
         for (const profile of profiles) {
-            o.value(profile['.name'], profile.name || profile['.name']);
+            activeProfileOpt.value(profile['.name'], profileLabel(profile));
         }
-        o.rmempty = true;
+        activeProfileOpt.rmempty = false;
+        activeProfileOpt.cfgvalue = function (sectionId) {
+            return currentProfileSection(profiles, uci.get(variant, sectionId, 'active_profile') || '');
+        };
 
-        o = s.taboption('config', form.TextValue, 'json_config', _('Xray JSON configuration'));
-        o.rows = 28;
-        o.wrap = 'off';
-        o.rmempty = false;
-        o.validate = function (sectionId, value) {
+        jsonConfigOpt = s.taboption('config', form.TextValue, 'json_config', _('Xray JSON configuration'));
+        jsonConfigOpt.rows = 28;
+        jsonConfigOpt.wrap = 'off';
+        jsonConfigOpt.rmempty = false;
+        jsonConfigOpt.cfgvalue = function (sectionId) {
+            const profileId = currentProfileSection(profiles, uci.get(variant, sectionId, 'active_profile') || '');
+            const profile = profileBySection(profiles, profileId);
+            if (profile) {
+                return profile.json_config || '{}';
+            }
+            return uci.get(variant, sectionId, 'json_config') || '{}';
+        };
+        jsonConfigOpt.write = function (sectionId, value) {
+            const profileId = currentProfileSection(profiles, activeProfileOpt.formvalue(sectionId) || '');
+            if (profileBySection(profiles, profileId)) {
+                uci.set(variant, profileId, 'json_config', value);
+            } else {
+                uci.set(variant, sectionId, 'json_config', value);
+            }
+        };
+        jsonConfigOpt.validate = function (sectionId, value) {
             try {
                 const parsed = JSON.parse(value);
                 if (Array.isArray(parsed) || parsed === null || typeof parsed !== 'object') {
@@ -200,12 +243,20 @@ return view.extend({
                 return e.message;
             }
         };
+        activeProfileOpt.onchange = function (ev, sectionId, value) {
+            const profile = profileBySection(profiles, value);
+            const editor = document.getElementById(jsonConfigOpt.cbid(sectionId));
+            if (profile && editor) {
+                editor.value = profile.json_config || '{}';
+            }
+        };
 
-        o = s.taboption('config', form.Button, '_export_legacy', _('Export legacy JSON'));
+        o = s.taboption('config', form.Button, '_export_current', _('Export current JSON'));
         o.inputstyle = 'action';
-        o.onclick = function () {
-            const general = uci.sections(variant, 'general')[0];
-            downloadText('xray-simple-legacy.json', uci.get(variant, general['.name'], 'json_config') || '{}');
+        o.onclick = function (sectionId) {
+            const profileId = currentProfileSection(profiles, activeProfileOpt.formvalue(sectionId) || '');
+            const profile = profileBySection(profiles, profileId);
+            downloadText(configFilename(profile ? profileLabel(profile) : 'current'), jsonConfigOpt.formvalue(sectionId) || '{}');
         };
 
         importNameOpt = s.taboption('config', form.Value, 'import_profile_name', _('Import profile name'));
@@ -217,18 +268,7 @@ return view.extend({
         importJsonOpt.wrap = 'off';
         importJsonOpt.rmempty = true;
         importJsonOpt.validate = function (sectionId, value) {
-            if (value === '') {
-                return true;
-            }
-            try {
-                const parsed = JSON.parse(value);
-                if (Array.isArray(parsed) || parsed === null || typeof parsed !== 'object') {
-                    return _('Xray config must be a JSON object');
-                }
-                return true;
-            } catch (e) {
-                return e.message;
-            }
+            return true;
         };
 
         o = s.taboption('config', form.Button, '_import_profile', _('Import as new profile'));
@@ -236,26 +276,29 @@ return view.extend({
         o.onclick = function (sectionId) {
             const name = importNameOpt.formvalue(sectionId) || 'imported';
             const json = importJsonOpt.formvalue(sectionId) || '';
-            try {
-                const parsed = JSON.parse(json);
-                if (Array.isArray(parsed) || parsed === null || typeof parsed !== 'object') {
-                    throw new Error(_('Xray config must be a JSON object'));
-                }
-            } catch (e) {
-                ui.addNotification(null, E('pre', {}, e.message), 'danger');
-                return Promise.resolve();
-            }
 
-            const profileId = uci.add(variant, 'profile');
-            uci.set(variant, profileId, 'name', name);
-            uci.set(variant, profileId, 'json_config', json);
-            uci.set(variant, sectionId, 'import_profile_name', '');
-            uci.set(variant, sectionId, 'import_json', '');
-
-            return uci.save().then(function () {
-                return ui.changes.apply();
+            return fs.write(importTestPath, json).then(function () {
+                return fs.exec(initScript, ['test_json_file', importTestPath]);
             }).then(function () {
-                location.reload();
+                const profileId = uci.add(variant, 'profile');
+                uci.set(variant, profileId, 'name', name);
+                uci.set(variant, profileId, 'json_config', json);
+                uci.set(variant, sectionId, 'active_profile', profileId);
+                uci.set(variant, sectionId, 'import_profile_name', '');
+                uci.set(variant, sectionId, 'import_json', '');
+
+                return uci.save().then(function () {
+                    return ui.changes.apply();
+                }).then(function () {
+                    location.reload();
+                });
+            }).catch(function (err) {
+                ui.showModal(_('Xray config validation failed'), [
+                    E('pre', { 'style': 'white-space: pre-wrap' }, err.message || String(err)),
+                    E('div', { 'class': 'right' }, [
+                        E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Close validation error'))
+                    ])
+                ]);
             });
         };
 
@@ -268,24 +311,12 @@ return view.extend({
         o = ss.option(form.Value, 'name', _('Profile name'));
         o.rmempty = false;
 
-        o = ss.option(form.TextValue, 'json_config', _('Profile JSON'));
-        o.rows = 16;
-        o.wrap = 'off';
-        o.rmempty = false;
-        o.validate = function (sectionId, value) {
-            try {
-                const parsed = JSON.parse(value);
-                if (Array.isArray(parsed) || parsed === null || typeof parsed !== 'object') {
-                    return _('Xray config must be a JSON object');
-                }
-                return true;
-            } catch (e) {
-                return e.message;
-            }
-        };
-
         o = ss.option(form.Button, '_switch', _('Switch & Restart'));
         o.inputstyle = 'apply';
+        o.modalonly = false;
+        o.textvalue = function () {
+            return _('Switch & Restart');
+        };
         o.onclick = function (sectionId) {
             return uci.save().then(function () {
                 return ui.changes.apply();
@@ -301,6 +332,10 @@ return view.extend({
 
         o = ss.option(form.Button, '_export', _('Export profile'));
         o.inputstyle = 'action';
+        o.modalonly = false;
+        o.textvalue = function () {
+            return _('Export profile');
+        };
         o.onclick = function (sectionId) {
             const name = uci.get(variant, sectionId, 'name') || sectionId;
             const json = uci.get(variant, sectionId, 'json_config') || '{}';

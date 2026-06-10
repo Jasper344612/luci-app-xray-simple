@@ -166,3 +166,12 @@ msgstr "直接加载 nft"
 
 msgid "firewall4 include"
 msgstr "firewall4 include"
+
+msgid "Close validation error"
+msgstr "关闭校验错误"
+
+msgid "Export current JSON"
+msgstr "导出当前 JSON"
+
+msgid "Xray config validation failed"
+msgstr "Xray 配置校验失败"

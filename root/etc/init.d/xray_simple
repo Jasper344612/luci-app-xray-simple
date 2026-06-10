@@ -358,6 +358,50 @@ test_config() {
 	return 1
 }
 
+test_json_file() {
+	local xray_bin="$1"
+	local json_file="$2"
+	local test_dir output
+
+	if [ -z "$json_file" ]; then
+		json_file="$xray_bin"
+		xray_bin="$(uci_get xray_bin /usr/bin/xray)"
+	fi
+	command -v "$xray_bin" >/dev/null 2>&1 || {
+		echo "xray binary not found: $xray_bin"
+		return 1
+	}
+	[ -s "$json_file" ] || {
+		echo "JSON file is empty or missing: $json_file"
+		return 1
+	}
+
+	test_dir="/tmp/xray-simple-test.$$"
+	mkdir -p "$test_dir" || return 1
+	cp "$json_file" "${test_dir}/config.json" || {
+		rm -rf "$test_dir"
+		return 1
+	}
+
+	output="$("$xray_bin" test -confdir "$test_dir" 2>&1)"
+	if [ "$?" = "0" ]; then
+		rm -rf "$test_dir"
+		printf "%s\n" "$output"
+		return 0
+	fi
+
+	output="$("$xray_bin" run -test -confdir "$test_dir" 2>&1)"
+	if [ "$?" = "0" ]; then
+		rm -rf "$test_dir"
+		printf "%s\n" "$output"
+		return 0
+	fi
+
+	rm -rf "$test_dir"
+	printf "%s\n" "$output"
+	return 1
+}
+
 nft_status() {
 	local nft_mode
 	nft_mode="$(uci_get nft_mode firewall4)"
@@ -450,6 +494,7 @@ restart_now() {
 }
 
 extra_command "test_config" "Validate active Xray JSON configuration"
+extra_command "test_json_file" "Validate a JSON config file"
 extra_command "nft_status" "Show nftables and policy routing status"
 extra_command "switch_profile" "Switch active profile and reload"
 extra_command "export_profile" "Print active or selected profile JSON"

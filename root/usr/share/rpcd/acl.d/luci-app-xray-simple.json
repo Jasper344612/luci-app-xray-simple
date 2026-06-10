@@ -30,6 +30,9 @@
             "file": {
                 "/etc/init.d/xray_simple": [
                     "exec"
+                ],
+                "/tmp/xray-simple-import.json": [
+                    "write"
                 ]
             }
         }
