@@ -1,0 +1,168 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Project-Id-Version: luci-app-xray-simple\n"
+"Language: zh_CN\n"
+
+msgid "%s must be a positive integer"
+msgstr "%s 必须是正整数"
+
+msgid "Active profile"
+msgstr "当前配置"
+
+msgid "Add a profile to import JSON, then use Switch & Restart for one-click switching."
+msgstr "添加配置用于导入 JSON，然后使用切换并重启进行一键切换。"
+
+msgid "Bypass GIDs"
+msgstr "绕过 GID"
+
+msgid "Bypass IPv4/CIDR"
+msgstr "绕过 IPv4/CIDR"
+
+msgid "Bypass IPv6/CIDR"
+msgstr "绕过 IPv6/CIDR"
+
+msgid "Bypass UIDs"
+msgstr "绕过 UID"
+
+msgid "Enable Xray Simple"
+msgstr "启用 Xray Simple"
+
+msgid "Export legacy JSON"
+msgstr "导出旧版 JSON"
+
+msgid "Export profile"
+msgstr "导出配置"
+
+msgid "GID must be numeric"
+msgstr "GID 必须是数字"
+
+msgid "Generated nftables rules"
+msgstr "生成的 nftables 规则"
+
+msgid "IPv4 route table"
+msgstr "IPv4 路由表"
+
+msgid "IPv6 route table"
+msgstr "IPv6 路由表"
+
+msgid "Import JSON as profile"
+msgstr "导入 JSON 为配置"
+
+msgid "Import as new profile"
+msgstr "导入为新配置"
+
+msgid "Import profile name"
+msgstr "导入配置名称"
+
+msgid "Invalid CIDR prefix length"
+msgstr "CIDR 前缀长度无效"
+
+msgid "Invalid CIDR value"
+msgstr "CIDR 值无效"
+
+msgid "Invalid IPv4/CIDR value"
+msgstr "IPv4/CIDR 值无效"
+
+msgid "Invalid IPv6/CIDR value"
+msgstr "IPv6/CIDR 值无效"
+
+msgid "LAN interfaces"
+msgstr "LAN 接口"
+
+msgid "Minimal Xray TProxy management. Xray JSON remains user-owned; this page only manages process and TProxy plumbing."
+msgstr "最小化的 Xray TProxy 管理。Xray JSON 仍由用户维护；本页面只管理进程和 TProxy 管线。"
+
+msgid "No generated rules yet"
+msgstr "尚未生成规则"
+
+msgid "Policy routing mark"
+msgstr "策略路由 mark"
+
+msgid "Process Management"
+msgstr "进程管理"
+
+msgid "Profile JSON"
+msgstr "配置 JSON"
+
+msgid "Profile name"
+msgstr "配置名称"
+
+msgid "Proxy LAN DNS port 53"
+msgstr "代理 LAN DNS 53 端口"
+
+msgid "Proxy router-local traffic"
+msgstr "代理路由器本机流量"
+
+msgid "Restart Xray Simple"
+msgstr "重启 Xray Simple"
+
+msgid "Rule loading mode"
+msgstr "规则加载模式"
+
+msgid "Show nftables status"
+msgstr "显示 nftables 状态"
+
+msgid "Start Xray Simple"
+msgstr "启动 Xray Simple"
+
+msgid "Stop Xray Simple"
+msgstr "停止 Xray Simple"
+
+msgid "Switch & Restart"
+msgstr "切换并重启"
+
+msgid "System Settings"
+msgstr "系统设置"
+
+msgid "TProxy port"
+msgstr "TProxy 端口"
+
+msgid "UID must be numeric"
+msgstr "UID 必须是数字"
+
+msgid "Use legacy JSON below"
+msgstr "使用下方旧版 JSON"
+
+msgid "Validate Xray config"
+msgstr "校验 Xray 配置"
+
+msgid "Xray Config"
+msgstr "Xray 配置"
+
+msgid "Xray JSON configuration"
+msgstr "Xray JSON 配置"
+
+msgid "Xray Simple"
+msgstr "Xray Simple"
+
+msgid "Xray Simple command completed"
+msgstr "Xray Simple 命令已完成"
+
+msgid "Xray Simple profile switched"
+msgstr "Xray Simple 配置已切换"
+
+msgid "Xray Simple profiles"
+msgstr "Xray Simple 配置列表"
+
+msgid "Xray Simple status"
+msgstr "Xray Simple 状态"
+
+msgid "Xray Simple status unavailable"
+msgstr "Xray Simple 状态不可用"
+
+msgid "Xray binary"
+msgstr "Xray 可执行文件"
+
+msgid "Xray config must be a JSON object"
+msgstr "Xray 配置必须是 JSON 对象"
+
+msgid "Xray outbound bypass mark"
+msgstr "Xray 出站绕过 mark"
+
+msgid "direct nft load"
+msgstr "直接加载 nft"
+
+msgid "firewall4 include"
+msgstr "firewall4 include"

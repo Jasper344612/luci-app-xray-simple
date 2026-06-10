@@ -58,7 +58,7 @@ function commandButton(section, tab, label, command, style) {
     o.inputstyle = style || 'button';
     o.onclick = function () {
         return fs.exec(initScript, [command]).then(function (res) {
-            ui.addNotification(null, E('pre', {}, res.stdout || _('Command completed')), 'info');
+            ui.addNotification(null, E('pre', {}, res.stdout || _('Xray Simple command completed')), 'info');
             if (command === 'start_now' || command === 'stop_now' || command === 'restart_now') {
                 window.setTimeout(function () {
                     location.reload();
@@ -75,7 +75,7 @@ return view.extend({
     load: function () {
         return Promise.all([
             uci.load(variant),
-            L.resolveDefault(fs.exec(initScript, ['status']), { stdout: _('Status unavailable'), stderr: '' }),
+            L.resolveDefault(fs.exec(initScript, ['status']), { stdout: _('Xray Simple status unavailable'), stderr: '' }),
             L.resolveDefault(fs.read('/var/etc/xray-simple/fw4/01_xray_simple.nft'), '').then(function (fw4Rules) {
                 if (fw4Rules) {
                     return fw4Rules;
@@ -98,9 +98,9 @@ return view.extend({
 
         s.tab('system', _('System Settings'));
         s.tab('config', _('Xray Config'));
-        s.tab('process', _('Process'));
+        s.tab('process', _('Process Management'));
 
-        o = s.taboption('system', form.Flag, 'enabled', _('Enable'));
+        o = s.taboption('system', form.Flag, 'enabled', _('Enable Xray Simple'));
         o.default = '0';
         o.rmempty = false;
 
@@ -259,16 +259,16 @@ return view.extend({
             });
         };
 
-        ss = m.section(form.GridSection, 'profile', _('Profiles'), _('Add a profile to import JSON, then use Switch & Restart for one-click switching.'));
+        ss = m.section(form.GridSection, 'profile', _('Xray Simple profiles'), _('Add a profile to import JSON, then use Switch & Restart for one-click switching.'));
         ss.anonymous = true;
         ss.addremove = true;
         ss.sortable = true;
         ss.nodescriptions = true;
 
-        o = ss.option(form.Value, 'name', _('Name'));
+        o = ss.option(form.Value, 'name', _('Profile name'));
         o.rmempty = false;
 
-        o = ss.option(form.TextValue, 'json_config', _('JSON'));
+        o = ss.option(form.TextValue, 'json_config', _('Profile JSON'));
         o.rows = 16;
         o.wrap = 'off';
         o.rmempty = false;
@@ -292,14 +292,14 @@ return view.extend({
             }).then(function () {
                 return fs.exec(initScript, ['switch_profile', sectionId]);
             }).then(function (res) {
-                ui.addNotification(null, E('pre', {}, res.stdout || _('Profile switched')), 'info');
+                ui.addNotification(null, E('pre', {}, res.stdout || _('Xray Simple profile switched')), 'info');
                 return location.reload();
             }).catch(function (err) {
                 ui.addNotification(null, E('pre', {}, err.message || String(err)), 'danger');
             });
         };
 
-        o = ss.option(form.Button, '_export', _('Export'));
+        o = ss.option(form.Button, '_export', _('Export profile'));
         o.inputstyle = 'action';
         o.onclick = function (sectionId) {
             const name = uci.get(variant, sectionId, 'name') || sectionId;
@@ -307,17 +307,17 @@ return view.extend({
             downloadText('xray-simple-' + name.replace(/[^A-Za-z0-9_.-]/g, '_') + '.json', json);
         };
 
-        o = s.taboption('process', form.DummyValue, '_status', _('Status'));
+        o = s.taboption('process', form.DummyValue, '_status', _('Xray Simple status'));
         o.rawhtml = true;
         o.cfgvalue = function () {
-            return E('pre', { 'style': 'white-space: pre-wrap' }, (status.stdout || _('Status unavailable')) + (status.stderr ? '\n' + status.stderr : ''));
+            return E('pre', { 'style': 'white-space: pre-wrap' }, (status.stdout || _('Xray Simple status unavailable')) + (status.stderr ? '\n' + status.stderr : ''));
         };
 
-        commandButton(s, 'process', _('Start'), 'start_now', 'apply');
-        commandButton(s, 'process', _('Stop'), 'stop_now', 'reset');
-        commandButton(s, 'process', _('Restart'), 'restart_now', 'reload');
-        commandButton(s, 'process', _('Validate config'), 'test_config', 'action');
-        commandButton(s, 'process', _('nftables status'), 'nft_status', 'action');
+        commandButton(s, 'process', _('Start Xray Simple'), 'start_now', 'apply');
+        commandButton(s, 'process', _('Stop Xray Simple'), 'stop_now', 'reset');
+        commandButton(s, 'process', _('Restart Xray Simple'), 'restart_now', 'reload');
+        commandButton(s, 'process', _('Validate Xray config'), 'test_config', 'action');
+        commandButton(s, 'process', _('Show nftables status'), 'nft_status', 'action');
 
         o = s.taboption('process', form.DummyValue, '_generated_nft', _('Generated nftables rules'));
         o.rawhtml = true;

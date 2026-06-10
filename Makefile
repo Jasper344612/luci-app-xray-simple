@@ -8,6 +8,7 @@ PKG_LICENSE:=MPLv2
 PKG_LICENSE_FILES:=LICENSE
 PKG_MAINTAINER:=saruo
 PKG_BUILD_PARALLEL:=1
+PKG_BUILD_DEPENDS:=luci-base/host
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -23,7 +24,20 @@ define Package/$(PKG_NAME)/description
 	Simple LuCI support for Xray using a user-provided JSON config and minimal TProxy settings.
 endef
 
+define Package/$(PKG_NAME)-zh
+	SECTION:=Custom
+	CATEGORY:=Extra packages
+	TITLE:=Chinese translation for Xray Simple LuCI app
+	DEPENDS:=$(PKG_NAME)
+	PKGARCH:=all
+endef
+
+define Package/$(PKG_NAME)-zh/description
+	Chinese translation for the Xray Simple LuCI application.
+endef
+
 define Build/Compile
+	$(STAGING_DIR_HOSTPKG)/bin/po2lmo ./po/zh_Hans/xray-simple.po ./po/zh_Hans/xray-simple.zh-cn.lmo
 endef
 
 define Package/$(PKG_NAME)/postinst
@@ -58,4 +72,18 @@ define Package/$(PKG_NAME)/install
 	$(INSTALL_DATA) ./root/www/luci-static/resources/view/xray-simple/core.js $(1)/www/luci-static/resources/view/xray-simple/core.js
 endef
 
+define Package/$(PKG_NAME)-zh/postinst
+#!/bin/sh
+if [ -z "$${IPKG_INSTROOT}" ]; then
+	rm -rf /tmp/luci-indexcache* /tmp/luci-modulecache
+fi
+exit 0
+endef
+
+define Package/$(PKG_NAME)-zh/install
+	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/i18n
+	$(INSTALL_DATA) ./po/zh_Hans/xray-simple.zh-cn.lmo $(1)/usr/lib/lua/luci/i18n/xray-simple.zh-cn.lmo
+endef
+
 $(eval $(call BuildPackage,$(PKG_NAME)))
+$(eval $(call BuildPackage,$(PKG_NAME)-zh))
