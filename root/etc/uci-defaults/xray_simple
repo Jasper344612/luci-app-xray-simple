@@ -1,5 +1,7 @@
 #!/bin/sh
 uci get xray_simple.@general[-1] >/dev/null 2>&1 || uci add xray_simple general >/dev/null 2>&1
+uci -q del_list xray_simple.@general[0].bypass_ipv4='0.0.0.0/32'
+uci -q del_list xray_simple.@general[0].bypass_ipv6='::/128'
 uci commit xray_simple
 uci -q batch <<-EOF >/dev/null
 	delete ucitrack.@xray_simple[-1]

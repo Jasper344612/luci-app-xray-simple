@@ -13,8 +13,6 @@ config general
 	option import_profile_name ''
 	option import_json ''
 	list lan_ifaces 'br-lan'
-	list bypass_ipv4 '0.0.0.0/32'
-	list bypass_ipv6 '::/128'
 	option json_config '{
   "log": {
     "loglevel": "warning"
