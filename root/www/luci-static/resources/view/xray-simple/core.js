@@ -59,6 +59,11 @@ function commandButton(section, tab, label, command, style) {
     o.onclick = function () {
         return fs.exec(initScript, [command]).then(function (res) {
             ui.addNotification(null, E('pre', {}, res.stdout || _('Command completed')), 'info');
+            if (command === 'start_now' || command === 'stop_now' || command === 'restart_now') {
+                window.setTimeout(function () {
+                    location.reload();
+                }, 1200);
+            }
         }).catch(function (err) {
             ui.addNotification(null, E('pre', {}, err.message || String(err)), 'danger');
         });

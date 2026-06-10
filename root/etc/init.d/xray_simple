@@ -214,6 +214,7 @@ setup_routes() {
 	table_v4="$(uci_get route_table_v4 100)"
 	table_v6="$(uci_get route_table_v6 106)"
 
+	flush_routes
 	ip rule add fwmark "$mark" table "$table_v4" 2>/dev/null
 	ip route add local 0.0.0.0/0 dev lo table "$table_v4" 2>/dev/null
 	ip -6 rule add fwmark "$mark" table "$table_v6" 2>/dev/null
@@ -226,9 +227,9 @@ flush_routes() {
 	table_v4="$(uci_get route_table_v4 100)"
 	table_v6="$(uci_get route_table_v6 106)"
 
-	ip rule del fwmark "$mark" table "$table_v4" 2>/dev/null
+	while ip rule del fwmark "$mark" table "$table_v4" 2>/dev/null; do :; done
 	ip route del local 0.0.0.0/0 dev lo table "$table_v4" 2>/dev/null
-	ip -6 rule del fwmark "$mark" table "$table_v6" 2>/dev/null
+	while ip -6 rule del fwmark "$mark" table "$table_v6" 2>/dev/null; do :; done
 	ip -6 route del local ::/0 dev lo table "$table_v6" 2>/dev/null
 }
 
@@ -312,7 +313,7 @@ status_service() {
 }
 
 xray_pids() {
-	ps w 2>/dev/null | awk '/[x]ray .*run .*confdir \\/var\\/etc\\/xray-simple/ { printf "%s%s", sep, $1; sep=" " }'
+	ps w 2>/dev/null | awk '/[x]ray/ && index($0, " run ") && index($0, "confdir /var/etc/xray-simple") { printf "%s%s", sep, $1; sep = " " }'
 }
 
 test_config() {
