@@ -101,20 +101,36 @@ function showCommandError(title, err) {
     ]);
 }
 
-function commandButton(section, tab, label, command, style) {
-    const o = section.taboption(tab, form.Button, '_' + command, label);
-    o.inputstyle = style || 'button';
-    o.onclick = function () {
-        return fs.exec(initScript, [command]).then(function (res) {
-            ui.addNotification(null, E('pre', {}, res.stdout || _('Xray Simple command completed')), 'info');
-            if (command === 'start_now' || command === 'stop_now' || command === 'restart_now') {
-                window.setTimeout(function () {
-                    location.reload();
-                }, 1200);
-            }
-        }).catch(function (err) {
-            showCommandError(_('Xray Simple command failed'), err);
-        });
+function shouldReloadAfter(command) {
+    return ['start_now', 'stop_now', 'restart_now', 'start_tproxy', 'stop_tproxy'].includes(command);
+}
+
+function runCommand(command) {
+    return fs.exec(initScript, [command]).then(function (res) {
+        ui.addNotification(null, E('pre', {}, res.stdout || _('Xray Simple command completed')), 'info');
+        if (shouldReloadAfter(command)) {
+            window.setTimeout(function () {
+                location.reload();
+            }, 1200);
+        }
+    }).catch(function (err) {
+        showCommandError(_('Xray Simple command failed'), err);
+    });
+}
+
+function commandGroup(section, tab, id, label, buttons) {
+    const o = section.taboption(tab, form.DummyValue, '_' + id, label);
+    o.rawhtml = true;
+    o.renderWidget = function () {
+        return E('div', { 'class': 'cbi-button-group' }, buttons.map(function (button) {
+            return E('button', {
+                'class': 'btn cbi-button cbi-button-' + (button.style || 'button'),
+                'click': function (ev) {
+                    ev.preventDefault();
+                    return runCommand(button.command);
+                }
+            }, button.label);
+        }));
     };
     return o;
 }
@@ -137,6 +153,8 @@ return view.extend({
         const status = loadResult[1];
         const generatedNft = loadResult[2];
         const profiles = uci.sections(variant, 'profile') || [];
+        const generalConfig = (uci.sections(variant, 'general') || [])[0] || {};
+        const nftMode = generalConfig.nft_mode || 'firewall4';
         const m = new form.Map(variant, _('Xray Simple'), _('Minimal Xray TProxy management. Xray JSON remains user-owned; this page only manages process and TProxy plumbing.'));
         let s, ss, o, activeProfileOpt, jsonConfigOpt, importNameOpt, importJsonOpt;
 
@@ -334,35 +352,37 @@ return view.extend({
         o = ss.option(form.Value, 'name', _('Profile name'));
         o.rmempty = false;
 
-        o = ss.option(form.Button, '_switch', _('Switch & Restart'));
-        o.inputstyle = 'apply';
+        o = ss.option(form.DummyValue, '_profile_actions', _('Actions'));
         o.modalonly = false;
-        o.textvalue = function () {
-            return _('Switch & Restart');
-        };
-        o.onclick = function (sectionId) {
-            return uci.save().then(function () {
-                return ui.changes.apply();
-            }).then(function () {
-                return fs.exec(initScript, ['switch_profile', sectionId]);
-            }).then(function (res) {
-                ui.addNotification(null, E('pre', {}, res.stdout || _('Xray Simple profile switched')), 'info');
-                return location.reload();
-            }).catch(function (err) {
-                ui.addNotification(null, E('pre', {}, err.message || String(err)), 'danger');
-            });
-        };
-
-        o = ss.option(form.Button, '_export', _('Export profile'));
-        o.inputstyle = 'action';
-        o.modalonly = false;
-        o.textvalue = function () {
-            return _('Export profile');
-        };
-        o.onclick = function (sectionId) {
-            const name = uci.get(variant, sectionId, 'name') || sectionId;
-            const json = uci.get(variant, sectionId, 'json_config') || '{}';
-            downloadText('xray-simple-' + name.replace(/[^A-Za-z0-9_.-]/g, '_') + '.json', json);
+        o.rawhtml = true;
+        o.renderWidget = function (sectionId) {
+            return E('div', { 'class': 'cbi-button-group' }, [
+                E('button', {
+                    'class': 'btn cbi-button cbi-button-apply',
+                    'click': function (ev) {
+                        ev.preventDefault();
+                        return uci.save().then(function () {
+                            return ui.changes.apply();
+                        }).then(function () {
+                            return fs.exec(initScript, ['switch_profile', sectionId]);
+                        }).then(function (res) {
+                            ui.addNotification(null, E('pre', {}, res.stdout || _('Xray Simple profile switched')), 'info');
+                            return location.reload();
+                        }).catch(function (err) {
+                            showCommandError(_('Xray Simple command failed'), err);
+                        });
+                    }
+                }, _('Switch & Restart')),
+                E('button', {
+                    'class': 'btn cbi-button cbi-button-action',
+                    'click': function (ev) {
+                        ev.preventDefault();
+                        const name = uci.get(variant, sectionId, 'name') || sectionId;
+                        const json = uci.get(variant, sectionId, 'json_config') || '{}';
+                        downloadText('xray-simple-' + name.replace(/[^A-Za-z0-9_.-]/g, '_') + '.json', json);
+                    }
+                }, _('Export profile'))
+            ]);
         };
 
         o = s.taboption('process', form.DummyValue, '_status', _('Xray Simple status'));
@@ -371,13 +391,21 @@ return view.extend({
             return E('pre', { 'style': 'white-space: pre-wrap' }, (status.stdout || _('Xray Simple status unavailable')) + (status.stderr ? '\n' + status.stderr : ''));
         };
 
-        commandButton(s, 'process', _('Start Xray Simple'), 'start_now', 'apply');
-        commandButton(s, 'process', _('Stop Xray Simple'), 'stop_now', 'reset');
-        commandButton(s, 'process', _('Restart Xray Simple'), 'restart_now', 'reload');
-        commandButton(s, 'process', _('Validate Xray config'), 'test_config', 'action');
-        commandButton(s, 'process', _('Show nftables status'), 'nft_status', 'action');
+        commandGroup(s, 'process', 'xray_actions', _('Xray'), [
+            { label: _('Start'), command: 'start_now', style: 'apply' },
+            { label: _('Stop'), command: 'stop_now', style: 'reset' },
+            { label: _('Restart'), command: 'restart_now', style: 'reload' }
+        ]);
+        commandGroup(s, 'process', 'tproxy_actions', _('TProxy'), [
+            { label: _('Start TProxy'), command: 'start_tproxy', style: 'apply' },
+            { label: _('Stop TProxy'), command: 'stop_tproxy', style: 'reset' }
+        ]);
+        commandGroup(s, 'process', 'tool_actions', _('Tools'), [
+            { label: _('Validate Xray config'), command: 'test_config', style: 'action' },
+            { label: _('Show nftables status'), command: 'nft_status', style: 'action' }
+        ]);
 
-        o = s.taboption('process', form.DummyValue, '_generated_nft', _('Generated nftables rules'));
+        o = s.taboption('process', form.DummyValue, '_generated_nft', nftMode === 'direct' ? _('Generated direct nftables rules') : _('Generated firewall4 nftables rules'));
         o.rawhtml = true;
         o.cfgvalue = function () {
             return E('pre', { 'style': 'max-height: 32em; overflow: auto; white-space: pre-wrap' }, generatedNft || _('No generated rules yet'));

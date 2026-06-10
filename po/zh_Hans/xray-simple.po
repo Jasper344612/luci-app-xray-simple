@@ -11,6 +11,9 @@ msgstr "%s 必须是正整数"
 msgid "Active profile"
 msgstr "当前配置"
 
+msgid "Actions"
+msgstr "操作"
+
 msgid "Add a profile to import JSON, then use Switch & Restart for one-click switching."
 msgstr "添加配置用于导入 JSON，然后使用切换并重启进行一键切换。"
 
@@ -40,6 +43,12 @@ msgstr "GID 必须是数字"
 
 msgid "Generated nftables rules"
 msgstr "生成的 nftables 规则"
+
+msgid "Generated direct nftables rules"
+msgstr "生成的 direct nftables 规则"
+
+msgid "Generated firewall4 nftables rules"
+msgstr "生成的 firewall4 nftables 规则"
 
 msgid "IPv4 route table"
 msgstr "IPv4 路由表"
@@ -104,11 +113,23 @@ msgstr "规则加载模式"
 msgid "Show nftables status"
 msgstr "显示 nftables 状态"
 
+msgid "Start"
+msgstr "启动"
+
 msgid "Start Xray Simple"
 msgstr "启动 Xray Simple"
 
+msgid "Start TProxy"
+msgstr "启动 TProxy"
+
+msgid "Stop"
+msgstr "停止"
+
 msgid "Stop Xray Simple"
 msgstr "停止 Xray Simple"
+
+msgid "Stop TProxy"
+msgstr "停止 TProxy"
 
 msgid "Switch & Restart"
 msgstr "切换并重启"
@@ -119,6 +140,12 @@ msgstr "系统设置"
 msgid "TProxy port"
 msgstr "TProxy 端口"
 
+msgid "TProxy"
+msgstr "TProxy"
+
+msgid "Tools"
+msgstr "工具"
+
 msgid "UID must be numeric"
 msgstr "UID 必须是数字"
 
@@ -127,6 +154,9 @@ msgstr "使用下方旧版 JSON"
 
 msgid "Validate Xray config"
 msgstr "校验 Xray 配置"
+
+msgid "Restart"
+msgstr "重启"
 
 msgid "Xray Config"
 msgstr "Xray 配置"
@@ -154,6 +184,9 @@ msgstr "Xray Simple 状态不可用"
 
 msgid "Xray binary"
 msgstr "Xray 可执行文件"
+
+msgid "Xray"
+msgstr "Xray"
 
 msgid "Xray config must be a JSON object"
 msgstr "Xray 配置必须是 JSON 对象"

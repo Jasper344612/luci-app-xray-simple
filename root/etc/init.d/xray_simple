@@ -60,6 +60,20 @@ nft_string_set_body() {
 	echo "$out"
 }
 
+lan_cidrs() {
+	local family="$1"
+	local iface
+
+	for iface in $(uci_list lan_ifaces); do
+		[ -n "$iface" ] || continue
+		if [ "$family" = "4" ]; then
+			ip -o -4 addr show dev "$iface" scope global 2>/dev/null | awk '{ print $4 }'
+		else
+			ip -o -6 addr show dev "$iface" scope global 2>/dev/null | awk '{ print $4 }'
+		fi
+	done | sort -u
+}
+
 nft_write_set() {
 	local name="$1"
 	local type="$2"
@@ -97,7 +111,7 @@ write_config() {
 
 write_nft() {
 	local tproxy_port mark outbound_mark mark_h outbound_mark_h proxy_lan_dns proxy_router_output
-	local bypass_ipv4 bypass_ipv6 nft_mode lan_ifaces bypass_uids bypass_gids wrap_table
+	local bypass_ipv4 bypass_ipv6 lan_ipv4 lan_ipv6 nft_mode lan_ifaces bypass_uids bypass_gids wrap_table
 
 	nft_mode="$(uci_get nft_mode firewall4)"
 	if [ "$nft_mode" = "direct" ]; then
@@ -118,6 +132,8 @@ write_nft() {
 	proxy_router_output="$(uci_get proxy_router_output 1)"
 	bypass_ipv4="$(nft_set_body "$(uci_list bypass_ipv4)")"
 	bypass_ipv6="$(nft_set_body "$(uci_list bypass_ipv6)")"
+	lan_ipv4="$(nft_set_body "$(lan_cidrs 4)")"
+	lan_ipv6="$(nft_set_body "$(lan_cidrs 6)")"
 	lan_ifaces="$(nft_string_set_body "$(uci_list lan_ifaces)")"
 	bypass_uids="$(nft_set_body "$(uci_list bypass_uids)" "")"
 	bypass_gids="$(nft_set_body "$(uci_list bypass_gids)" "")"
@@ -131,6 +147,8 @@ write_nft() {
 	fi
 	nft_write_set "bypass_ipv4" "ipv4_addr" "$bypass_ipv4"
 	nft_write_set "bypass_ipv6" "ipv6_addr" "$bypass_ipv6"
+	nft_write_set "lan_ipv4" "ipv4_addr" "$lan_ipv4"
+	nft_write_set "lan_ipv6" "ipv6_addr" "$lan_ipv6"
 	cat >> "$NFT_FILE" <<-EOF
 	    chain xray_simple_prerouting {
 	        type filter hook prerouting priority mangle +10; policy accept;
@@ -145,6 +163,16 @@ write_nft() {
 	        ip6 daddr fc00::/7 udp dport != 53 return
 	        ip6 daddr @bypass_ipv6 return
 	EOF
+	if [ -n "$lan_ipv4" ]; then
+		cat >> "$NFT_FILE" <<-EOF
+	        ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } ip daddr != @lan_ipv4 return
+	EOF
+	fi
+	if [ -n "$lan_ipv6" ]; then
+		cat >> "$NFT_FILE" <<-EOF
+	        ip6 daddr fc00::/7 ip6 daddr != @lan_ipv6 return
+	EOF
+	fi
 
 	if [ "$proxy_lan_dns" = "1" ]; then
 		if [ -n "$lan_ifaces" ]; then
@@ -207,6 +235,18 @@ write_nft() {
 	        ip6 daddr fc00::/7 tcp dport != 53 return
 	        ip6 daddr fc00::/7 udp dport != 53 return
 	        ip6 daddr @bypass_ipv6 return
+	EOF
+		if [ -n "$lan_ipv4" ]; then
+			cat >> "$NFT_FILE" <<-EOF
+	        ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } ip daddr != @lan_ipv4 return
+	EOF
+		fi
+		if [ -n "$lan_ipv6" ]; then
+			cat >> "$NFT_FILE" <<-EOF
+	        ip6 daddr fc00::/7 ip6 daddr != @lan_ipv6 return
+	EOF
+		fi
+		cat >> "$NFT_FILE" <<-EOF
 	        meta l4proto { tcp, udp } meta mark set ${mark_h} accept
 	    }
 	EOF
@@ -317,6 +357,23 @@ start_service() {
 stop_service() {
 	flush_firewall
 	flush_routes
+}
+
+start_tproxy() {
+	modprobe nft_tproxy 2>/dev/null
+	write_nft
+	setup_routes
+	load_firewall || {
+		flush_routes
+		return 1
+	}
+	echo "Xray Simple TProxy rules started."
+}
+
+stop_tproxy() {
+	flush_firewall
+	flush_routes
+	echo "Xray Simple TProxy rules stopped."
 }
 
 reload_service() {
@@ -537,6 +594,8 @@ extra_command "export_profile" "Print active or selected profile JSON"
 extra_command "start_now" "Enable in UCI and start"
 extra_command "stop_now" "Stop and disable in UCI"
 extra_command "restart_now" "Enable in UCI and restart"
+extra_command "start_tproxy" "Start TProxy nftables and policy routing only"
+extra_command "stop_tproxy" "Stop TProxy nftables and policy routing only"
 
 service_triggers() {
 	procd_add_reload_trigger "xray_simple"
