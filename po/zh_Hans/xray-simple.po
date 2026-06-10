@@ -125,8 +125,8 @@ msgstr "配置 JSON"
 msgid "Profile name"
 msgstr "配置名称"
 
-msgid "Proxy LAN DNS port 53"
-msgstr "代理 LAN DNS 53 端口"
+msgid "Proxy LAN DNS UDP/53"
+msgstr "代理 LAN DNS UDP/53"
 
 msgid "Proxy router-local traffic"
 msgstr "代理路由器本机流量"

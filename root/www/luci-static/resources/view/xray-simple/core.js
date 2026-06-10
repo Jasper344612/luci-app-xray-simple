@@ -242,7 +242,7 @@ return view.extend({
             return parsePositiveInteger(value, _('IPv6 route table'));
         };
 
-        o = s.taboption('system', form.Flag, 'proxy_lan_dns', _('Proxy LAN DNS port 53'));
+        o = s.taboption('system', form.Flag, 'proxy_lan_dns', _('Proxy LAN DNS UDP/53'));
         o.default = '1';
         o.rmempty = false;
 
