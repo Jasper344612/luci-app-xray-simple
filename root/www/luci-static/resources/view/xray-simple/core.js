@@ -169,13 +169,11 @@ return view.extend({
         };
 
         o = s.taboption('system', form.DynamicList, 'bypass_ipv4', _('Bypass IPv4/CIDR'));
-        o.placeholder = '202.204.0.0/16';
         o.validate = function (sectionId, value) {
             return validateCidrList(value, 4);
         };
 
         o = s.taboption('system', form.DynamicList, 'bypass_ipv6', _('Bypass IPv6/CIDR'));
-        o.placeholder = '2001:da8::/32';
         o.validate = function (sectionId, value) {
             return validateCidrList(value, 6);
         };
