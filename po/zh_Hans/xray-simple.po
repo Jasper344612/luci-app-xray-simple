@@ -11,6 +11,9 @@ msgstr "%s 必须是正整数"
 msgid "Active profile"
 msgstr "当前配置"
 
+msgid "All Xray outbounds must set streamSettings.sockopt.mark to the Xray outbound bypass mark, otherwise traffic may loop back into TProxy. Current bypass mark: %s."
+msgstr "所有 Xray 出站都必须将 streamSettings.sockopt.mark 设置为 Xray 出站绕过 mark，否则流量可能回环进入 TProxy。当前绕过 mark：%s。"
+
 msgid "Actions"
 msgstr "操作"
 
@@ -97,6 +100,9 @@ msgstr "无简介"
 
 msgid "Optional short profile note"
 msgstr "可选的简短配置备注"
+
+msgid "Outbound mark reminder"
+msgstr "出站 mark 提醒"
 
 msgid "Policy routing mark"
 msgstr "策略路由 mark"

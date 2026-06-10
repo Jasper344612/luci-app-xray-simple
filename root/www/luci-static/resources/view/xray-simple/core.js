@@ -244,6 +244,15 @@ return view.extend({
             return validateCidrList(value, 6);
         };
 
+        o = s.taboption('config', form.DummyValue, '_outbound_mark_notice', _('Outbound mark reminder'));
+        o.rawhtml = true;
+        o.cfgvalue = function () {
+            const outboundMark = generalConfig.outbound_mark || '255';
+            return E('div', { 'class': 'alert-message warning' }, [
+                _('All Xray outbounds must set streamSettings.sockopt.mark to the Xray outbound bypass mark, otherwise traffic may loop back into TProxy. Current bypass mark: %s.').format(outboundMark)
+            ]);
+        };
+
         activeProfileOpt = s.taboption('config', form.ListValue, 'active_profile', _('Active profile'));
         for (const profile of profiles) {
             activeProfileOpt.value(profile['.name'], profileLabel(profile));

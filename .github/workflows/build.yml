@@ -43,6 +43,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Stamp package release
+        run: |
+          sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=${GITHUB_RUN_NUMBER}/" Makefile
+          grep -E "^(PKG_VERSION|PKG_RELEASE):=" Makefile
+
       - name: Install host dependencies
         run: |
           sudo apt-get update
