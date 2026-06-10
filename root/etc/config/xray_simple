@@ -1,6 +1,7 @@
 config general
 	option enabled '0'
 	option xray_bin '/usr/bin/xray'
+	option asset_dir '/usr/share/xray'
 	option nft_mode 'firewall4'
 	option tproxy_port '12345'
 	option mark '1'

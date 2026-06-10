@@ -30,6 +30,12 @@ profile_get() {
 	uci -q get "${NAME}.${section}.${option}"
 }
 
+xray_env() {
+	local asset_dir
+	asset_dir="$(uci_get asset_dir /usr/share/xray)"
+	XRAY_LOCATION_ASSET="$asset_dir" "$@"
+}
+
 mark_hex() {
 	printf "0x%08x" "$1"
 }
@@ -321,6 +327,7 @@ start_service() {
 	procd_open_instance
 	procd_set_param respawn 1 1 0
 	procd_set_param command "$xray_bin" run -confdir "$RUNDIR"
+	procd_set_param env XRAY_LOCATION_ASSET="$(uci_get asset_dir /usr/share/xray)"
 	procd_set_param stdout 1
 	procd_set_param stderr 1
 	procd_set_param pidfile "$PIDFILE"
@@ -369,6 +376,7 @@ status_service() {
 	echo "active profile: $(active_profile)"
 	echo "mark: $(uci_get mark 1)"
 	echo "tproxy port: $(uci_get tproxy_port 12345)"
+	echo "asset dir: $(uci_get asset_dir /usr/share/xray)"
 	echo
 	ip rule show | grep -E "fwmark|$(uci_get route_table_v4 100)" || true
 	ip -6 rule show | grep -E "fwmark|$(uci_get route_table_v6 106)" || true
@@ -408,13 +416,13 @@ test_config() {
 		return 1
 	}
 	write_config
-	output="$("$xray_bin" test -confdir "$RUNDIR" 2>&1)"
+	output="$(xray_env "$xray_bin" test -confdir "$RUNDIR" 2>&1)"
 	if [ "$?" = "0" ]; then
 		printf "%s\n" "$output"
 		return 0
 	fi
 
-	output="$("$xray_bin" run -test -confdir "$RUNDIR" 2>&1)"
+	output="$(xray_env "$xray_bin" run -test -confdir "$RUNDIR" 2>&1)"
 	if [ "$?" = "0" ]; then
 		printf "%s\n" "$output"
 		return 0
@@ -449,14 +457,14 @@ test_json_file() {
 		return 1
 	}
 
-	output="$("$xray_bin" test -confdir "$test_dir" 2>&1)"
+	output="$(xray_env "$xray_bin" test -confdir "$test_dir" 2>&1)"
 	if [ "$?" = "0" ]; then
 		rm -rf "$test_dir"
 		printf "%s\n" "$output"
 		return 0
 	fi
 
-	output="$("$xray_bin" run -test -confdir "$test_dir" 2>&1)"
+	output="$(xray_env "$xray_bin" run -test -confdir "$test_dir" 2>&1)"
 	if [ "$?" = "0" ]; then
 		rm -rf "$test_dir"
 		printf "%s\n" "$output"

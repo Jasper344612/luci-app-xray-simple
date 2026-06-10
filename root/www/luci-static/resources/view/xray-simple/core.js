@@ -187,6 +187,10 @@ return view.extend({
         o.default = '/usr/bin/xray';
         o.rmempty = false;
 
+        o = s.taboption('system', form.Value, 'asset_dir', _('Xray asset directory'));
+        o.default = '/usr/share/xray';
+        o.rmempty = false;
+
         o = s.taboption('system', form.ListValue, 'nft_mode', _('Rule loading mode'));
         o.value('firewall4', _('firewall4 include'));
         o.value('direct', _('direct nft load'));

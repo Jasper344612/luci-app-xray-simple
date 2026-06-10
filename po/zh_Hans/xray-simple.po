@@ -209,6 +209,9 @@ msgstr "Xray Simple 状态不可用"
 msgid "Xray binary"
 msgstr "Xray 可执行文件"
 
+msgid "Xray asset directory"
+msgstr "Xray 资源文件目录"
+
 msgid "Xray"
 msgstr "Xray"
 
