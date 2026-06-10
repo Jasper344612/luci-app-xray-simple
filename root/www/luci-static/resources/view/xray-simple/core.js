@@ -101,18 +101,30 @@ function showCommandError(title, err) {
     ]);
 }
 
+function showCommandResult(title, text, reloadAfterClose) {
+    ui.showModal(title, [
+        E('pre', { 'style': 'white-space: pre-wrap' }, text || _('Xray Simple command completed')),
+        E('div', { 'class': 'right' }, [
+            E('button', {
+                'class': 'btn cbi-button cbi-button-apply',
+                'click': function () {
+                    ui.hideModal();
+                    if (reloadAfterClose) {
+                        location.reload();
+                    }
+                }
+            }, _('OK'))
+        ])
+    ]);
+}
+
 function shouldReloadAfter(command) {
     return ['start_now', 'stop_now', 'restart_now', 'start_tproxy', 'stop_tproxy'].includes(command);
 }
 
 function runCommand(command) {
     return fs.exec(initScript, [command]).then(function (res) {
-        ui.addNotification(null, E('pre', {}, res.stdout || _('Xray Simple command completed')), 'info');
-        if (shouldReloadAfter(command)) {
-            window.setTimeout(function () {
-                location.reload();
-            }, 1200);
-        }
+        showCommandResult(_('Xray Simple command completed'), res.stdout || _('Xray Simple command completed'), shouldReloadAfter(command));
     }).catch(function (err) {
         showCommandError(_('Xray Simple command failed'), err);
     });
@@ -360,7 +372,7 @@ return view.extend({
                 return uci.save().then(function () {
                     return ui.changes.apply();
                 }).then(function () {
-                    location.reload();
+                    showCommandResult(_('Import profile completed'), _('Xray Simple profile imported'), true);
                 });
             }).catch(function (err) {
                 ui.showModal(_('Import profile failed'), [
@@ -419,8 +431,7 @@ return view.extend({
                         }).then(function () {
                             return fs.exec(initScript, ['switch_profile', sectionId]);
                         }).then(function (res) {
-                            ui.addNotification(null, E('pre', {}, res.stdout || _('Xray Simple profile switched')), 'info');
-                            return location.reload();
+                            showCommandResult(_('Xray Simple profile switched'), res.stdout || _('Xray Simple profile switched'), true);
                         }).catch(function (err) {
                             showCommandError(_('Xray Simple command failed'), err);
                         });

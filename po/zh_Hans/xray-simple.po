@@ -104,6 +104,9 @@ msgstr "无简介"
 msgid "Optional short profile note"
 msgstr "可选的简短配置备注"
 
+msgid "OK"
+msgstr "确定"
+
 msgid "Outbound mark reminder"
 msgstr "出站 mark 提醒"
 
@@ -238,6 +241,12 @@ msgstr "导出当前 JSON"
 
 msgid "Import profile failed"
 msgstr "导入配置失败"
+
+msgid "Import profile completed"
+msgstr "导入配置完成"
+
+msgid "Xray Simple profile imported"
+msgstr "Xray Simple 配置已导入"
 
 msgid "Xray config validation failed"
 msgstr "Xray 配置校验失败"
