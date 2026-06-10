@@ -246,14 +246,23 @@ flush_routes() {
 
 load_firewall() {
 	local nft_mode
+	local output
 	nft_mode="$(uci_get nft_mode firewall4)"
 
 	if [ "$nft_mode" = "direct" ]; then
 		nft delete table inet xray_simple 2>/dev/null
-		nft -f "$NFT_FILE"
+		output="$(nft -f "$NFT_FILE" 2>&1)"
+		if [ "$?" != "0" ]; then
+			printf "%s\n" "$output"
+			return 1
+		fi
 	else
 		ensure_fw4_include
-		/etc/init.d/firewall restart
+		output="$(/etc/init.d/firewall restart 2>&1)"
+		if [ "$?" != "0" ]; then
+			printf "%s\n" "$output"
+			return 1
+		fi
 	fi
 }
 
@@ -280,10 +289,14 @@ start_service() {
 
 	local xray_bin
 	xray_bin="$(uci_get xray_bin /usr/bin/xray)"
-	command -v "$xray_bin" >/dev/null 2>&1 || return 1
+	command -v "$xray_bin" >/dev/null 2>&1 || {
+		echo "xray binary not found: $xray_bin"
+		return 1
+	}
 
 	modprobe nft_tproxy 2>/dev/null
 	write_config
+	test_json_file "$xray_bin" "${RUNDIR}/config.json" || return 1
 	write_nft
 	setup_routes
 	load_firewall || {
@@ -331,6 +344,27 @@ status_service() {
 
 xray_pids() {
 	ps w 2>/dev/null | awk '$5 ~ /(^|\/)xray$/ && index($0, " run ") && index($0, "confdir /var/etc/xray-simple") { printf "%s%s", sep, $1; sep = " " }'
+}
+
+recent_xray_logs() {
+	logread 2>/dev/null | grep -iE "xray|xray_simple|xray-simple" | tail -30 || true
+}
+
+assert_running() {
+	local pids
+
+	sleep 2
+	pids="$(xray_pids)"
+	if [ -n "$pids" ]; then
+		echo "Xray Simple running, pid ${pids}"
+		return 0
+	fi
+
+	echo "Xray Simple start failed: process is not running after start request."
+	echo
+	echo "Recent Xray logs:"
+	recent_xray_logs
+	return 1
 }
 
 test_config() {
@@ -476,6 +510,7 @@ start_now() {
 	else
 		start || return 1
 	fi
+	assert_running || return 1
 	echo "Xray Simple start requested."
 }
 
@@ -490,6 +525,7 @@ restart_now() {
 	uci set "${NAME}.@general[0].enabled=1"
 	uci commit "$NAME"
 	reload_service || return 1
+	assert_running || return 1
 	echo "Xray Simple restart requested."
 }
 

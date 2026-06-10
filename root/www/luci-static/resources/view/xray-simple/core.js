@@ -78,6 +78,29 @@ function configFilename(name) {
     return 'xray-simple-' + (name || 'current').replace(/[^A-Za-z0-9_.-]/g, '_') + '.json';
 }
 
+function commandErrorText(err) {
+    const parts = [];
+    if (err && err.stdout) {
+        parts.push(err.stdout);
+    }
+    if (err && err.stderr) {
+        parts.push(err.stderr);
+    }
+    if (parts.length === 0) {
+        parts.push(err && err.message ? err.message : String(err));
+    }
+    return parts.join('\n').trim();
+}
+
+function showCommandError(title, err) {
+    ui.showModal(title, [
+        E('pre', { 'style': 'white-space: pre-wrap' }, commandErrorText(err) || _('Xray Simple command failed')),
+        E('div', { 'class': 'right' }, [
+            E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Close command error'))
+        ])
+    ]);
+}
+
 function commandButton(section, tab, label, command, style) {
     const o = section.taboption(tab, form.Button, '_' + command, label);
     o.inputstyle = style || 'button';
@@ -90,7 +113,7 @@ function commandButton(section, tab, label, command, style) {
                 }, 1200);
             }
         }).catch(function (err) {
-            ui.addNotification(null, E('pre', {}, err.message || String(err)), 'danger');
+            showCommandError(_('Xray Simple command failed'), err);
         });
     };
     return o;
@@ -294,7 +317,7 @@ return view.extend({
                 });
             }).catch(function (err) {
                 ui.showModal(_('Xray config validation failed'), [
-                    E('pre', { 'style': 'white-space: pre-wrap' }, err.message || String(err)),
+                    E('pre', { 'style': 'white-space: pre-wrap' }, commandErrorText(err) || _('Xray config validation failed')),
                     E('div', { 'class': 'right' }, [
                         E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Close validation error'))
                     ])
