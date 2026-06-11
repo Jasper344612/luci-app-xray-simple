@@ -21,7 +21,13 @@ uci_list() {
 }
 
 active_profile() {
-	uci_get active_profile ""
+	local profile
+	profile="$(uci_get active_profile "")"
+	if [ -n "$profile" ] && uci -q get "${NAME}.${profile}" >/dev/null 2>&1; then
+		echo "$profile"
+		return
+	fi
+	uci -q show "$NAME" | sed -n "s/^${NAME}\.\([^.=]*\)=profile$/\1/p" | head -n 1
 }
 
 active_profile_label() {

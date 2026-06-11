@@ -15,39 +15,6 @@ config general
 	option import_profile_description ''
 	option import_json ''
 	list lan_ifaces 'br-lan'
-	option json_config '{
-  "log": {
-    "loglevel": "warning"
-  },
-  "inbounds": [
-    {
-      "tag": "tproxy-in",
-      "listen": "0.0.0.0",
-      "port": 12345,
-      "protocol": "dokodemo-door",
-      "settings": {
-        "network": "tcp,udp",
-        "followRedirect": true
-      },
-      "streamSettings": {
-        "sockopt": {
-          "tproxy": "tproxy"
-        }
-      }
-    }
-  ],
-  "outbounds": [
-    {
-      "tag": "direct",
-      "protocol": "freedom",
-      "streamSettings": {
-        "sockopt": {
-          "mark": 255
-        }
-      }
-    }
-  ]
-}'
 
 config profile
 	option name 'default'

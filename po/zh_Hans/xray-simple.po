@@ -44,9 +44,6 @@ msgstr "下载来源："
 msgid "Enable Xray Simple"
 msgstr "启用 Xray Simple"
 
-msgid "Export legacy JSON"
-msgstr "导出旧版 JSON"
-
 msgid "Export profile"
 msgstr "导出配置"
 
@@ -193,9 +190,6 @@ msgstr "工具"
 
 msgid "UID must be numeric"
 msgstr "UID 必须是数字"
-
-msgid "Use legacy JSON below"
-msgstr "使用下方旧版 JSON"
 
 msgid "Validate Xray config"
 msgstr "校验 Xray 配置"
