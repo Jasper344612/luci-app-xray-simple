@@ -298,6 +298,8 @@ load_firewall() {
 	nft_mode="$(uci_get nft_mode firewall4)"
 
 	if [ "$nft_mode" = "direct" ]; then
+		rm -f "${RUNDIR}"/fw4/*.nft
+		/etc/init.d/firewall restart >/dev/null 2>&1
 		nft delete table inet xray_simple 2>/dev/null
 		output="$(nft -f "$NFT_FILE" 2>&1)"
 		if [ "$?" != "0" ]; then
@@ -305,6 +307,8 @@ load_firewall() {
 			return 1
 		fi
 	else
+		nft delete table inet xray_simple 2>/dev/null
+		rm -f "${RUNDIR}/direct_xray_simple.nft"
 		ensure_fw4_include
 		output="$(/etc/init.d/firewall restart 2>&1)"
 		if [ "$?" != "0" ]; then
@@ -315,29 +319,17 @@ load_firewall() {
 }
 
 flush_firewall() {
-	local nft_mode
-	nft_mode="$(uci_get nft_mode firewall4)"
-
-	if [ "$nft_mode" = "direct" ]; then
-		nft delete table inet xray_simple 2>/dev/null
-		rm -f "${RUNDIR}/direct_xray_simple.nft"
-	else
-		rm -f "${RUNDIR}"/fw4/*.nft
-		/etc/init.d/firewall restart
-	fi
+	nft delete table inet xray_simple 2>/dev/null
+	rm -f "${RUNDIR}/direct_xray_simple.nft"
+	rm -f "${RUNDIR}"/fw4/*.nft
+	/etc/init.d/firewall restart
 }
 
 rollback_firewall() {
-	local nft_mode
-	nft_mode="$(uci_get nft_mode firewall4)"
-
-	if [ "$nft_mode" = "direct" ]; then
-		nft delete table inet xray_simple 2>/dev/null
-		rm -f "${RUNDIR}/direct_xray_simple.nft"
-	else
-		rm -f "${RUNDIR}"/fw4/*.nft
-		/etc/init.d/firewall restart >/dev/null 2>&1
-	fi
+	nft delete table inet xray_simple 2>/dev/null
+	rm -f "${RUNDIR}/direct_xray_simple.nft"
+	rm -f "${RUNDIR}"/fw4/*.nft
+	/etc/init.d/firewall restart >/dev/null 2>&1
 }
 
 ensure_fw4_include() {
@@ -556,9 +548,16 @@ nft_status() {
 		echo "=== direct nft table inet xray_simple ==="
 		show_nft_table inet xray_simple
 		echo
+		echo "=== firewall4 xray_simple chains ==="
+		show_nft_chain inet fw4 xray_simple_prerouting
+		show_nft_chain inet fw4 xray_simple_output
+		echo
 		echo "=== generated direct rules ==="
 		cat "${RUNDIR}/direct_xray_simple.nft" 2>/dev/null || echo "not generated"
 	else
+		echo "=== direct nft table inet xray_simple ==="
+		show_nft_table inet xray_simple
+		echo
 		echo "=== firewall4 xray_simple chains ==="
 		show_nft_chain inet fw4 xray_simple_prerouting
 		show_nft_chain inet fw4 xray_simple_output
