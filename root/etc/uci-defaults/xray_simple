@@ -1,6 +1,9 @@
 #!/bin/sh
 uci get xray_simple.@general[-1] >/dev/null 2>&1 || uci add xray_simple general >/dev/null 2>&1
 uci get xray_simple.@general[0].asset_dir >/dev/null 2>&1 || uci set xray_simple.@general[0].asset_dir='/usr/share/xray'
+uci -q delete xray_simple.@general[0].import_profile_name
+uci -q delete xray_simple.@general[0].import_profile_description
+uci -q delete xray_simple.@general[0].import_json
 uci -q del_list xray_simple.@general[0].bypass_ipv4='0.0.0.0/32'
 uci -q del_list xray_simple.@general[0].bypass_ipv6='::/128'
 uci commit xray_simple

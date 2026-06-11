@@ -116,9 +116,6 @@ msgstr "尚未生成规则"
 msgid "No description"
 msgstr "无简介"
 
-msgid "Optional short profile note"
-msgstr "可选的简短配置备注"
-
 msgid "OK"
 msgstr "确定"
 

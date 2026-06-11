@@ -78,6 +78,15 @@ function configFilename(name) {
     return 'xray-simple-' + (name || 'current').replace(/[^A-Za-z0-9_.-]/g, '_') + '.json';
 }
 
+function elementValue(id) {
+    const node = document.getElementById(id);
+    return node ? node.value : '';
+}
+
+function importFieldId(sectionId, field) {
+    return 'xray-simple-import-' + field + '-' + sectionId;
+}
+
 function commandErrorText(err) {
     const parts = [];
     if (err && err.stdout) {
@@ -208,7 +217,7 @@ return view.extend({
         const generalConfig = (uci.sections(variant, 'general') || [])[0] || {};
         const nftMode = generalConfig.nft_mode || 'firewall4';
         const m = new form.Map(variant, _('Xray Simple'), _('Minimal Xray TProxy management. Xray JSON remains user-owned; this page only manages process and TProxy plumbing.'));
-        let s, ss, o, activeProfileOpt, jsonConfigOpt, importNameOpt, importDescriptionOpt, importJsonOpt;
+        let s, ss, o, activeProfileOpt, jsonConfigOpt;
 
         s = m.section(form.TypedSection, 'general');
         s.anonymous = true;
@@ -395,54 +404,71 @@ return view.extend({
             downloadText(configFilename(profile ? profileLabel(profile) : 'current'), jsonConfigOpt.formvalue(sectionId) || '{}');
         };
 
-        importNameOpt = s.taboption('config', form.Value, 'import_profile_name', _('Import profile name'));
-        importNameOpt.placeholder = 'new-profile';
-        importNameOpt.rmempty = true;
+        o = s.taboption('config', form.DummyValue, '_import_profile', _('Import JSON as profile'));
+        o.rawhtml = true;
+        o.renderWidget = function (sectionId) {
+            const nameId = importFieldId(sectionId, 'name');
+            const descriptionId = importFieldId(sectionId, 'description');
+            const jsonId = importFieldId(sectionId, 'json');
 
-        importDescriptionOpt = s.taboption('config', form.Value, 'import_profile_description', _('Import profile description'));
-        importDescriptionOpt.placeholder = _('Optional short profile note');
-        importDescriptionOpt.rmempty = true;
+            return E('div', { 'style': 'display: grid; gap: .75rem; max-width: 70em' }, [
+                E('input', {
+                    'id': nameId,
+                    'class': 'cbi-input-text',
+                    'type': 'text',
+                    'placeholder': _('Import profile name')
+                }),
+                E('input', {
+                    'id': descriptionId,
+                    'class': 'cbi-input-text',
+                    'type': 'text',
+                    'placeholder': _('Import profile description')
+                }),
+                E('textarea', {
+                    'id': jsonId,
+                    'class': 'cbi-input-textarea',
+                    'style': 'min-height: 16em; white-space: pre; overflow: auto',
+                    'wrap': 'off',
+                    'placeholder': _('Import JSON as profile')
+                }),
+                E('div', {}, [
+                    E('button', {
+                        'type': 'button',
+                        'class': 'btn cbi-button cbi-button-apply',
+                        'click': function (ev) {
+                            ev.preventDefault();
 
-        importJsonOpt = s.taboption('config', form.TextValue, 'import_json', _('Import JSON as profile'));
-        importJsonOpt.rows = 12;
-        importJsonOpt.wrap = 'off';
-        importJsonOpt.rmempty = true;
-        importJsonOpt.validate = function (sectionId, value) {
-            return true;
-        };
+                            const rawName = elementValue(nameId).trim();
+                            const name = rawName || 'imported';
+                            const description = elementValue(descriptionId).trim();
+                            const json = elementValue(jsonId);
 
-        o = s.taboption('config', form.Button, '_import_profile', _('Import as new profile'));
-        o.inputstyle = 'apply';
-        o.onclick = function (sectionId) {
-            const name = importNameOpt.formvalue(sectionId) || 'imported';
-            const description = importDescriptionOpt.formvalue(sectionId) || '';
-            const json = importJsonOpt.formvalue(sectionId) || '';
+                            return fs.write(importTestPath, json).then(function () {
+                                return fs.exec(initScript, ['test_json_file', importTestPath]);
+                            }).then(function () {
+                                const profileId = uci.add(variant, 'profile');
+                                uci.set(variant, profileId, 'name', name);
+                                uci.set(variant, profileId, 'description', description);
+                                uci.set(variant, profileId, 'json_config', json);
+                                uci.set(variant, sectionId, 'active_profile', profileId);
 
-            return fs.write(importTestPath, json).then(function () {
-                return fs.exec(initScript, ['test_json_file', importTestPath]);
-            }).then(function () {
-                const profileId = uci.add(variant, 'profile');
-                uci.set(variant, profileId, 'name', name);
-                uci.set(variant, profileId, 'description', description);
-                uci.set(variant, profileId, 'json_config', json);
-                uci.set(variant, sectionId, 'active_profile', profileId);
-                uci.set(variant, sectionId, 'import_profile_name', '');
-                uci.set(variant, sectionId, 'import_profile_description', '');
-                uci.set(variant, sectionId, 'import_json', '');
-
-                return uci.save().then(function () {
-                    return ui.changes.apply();
-                }).then(function () {
-                    showCommandResult(_('Import profile completed'), _('Xray Simple profile imported'), true);
-                });
-            }).catch(function (err) {
-                ui.showModal(_('Import profile failed'), [
-                    E('pre', { 'style': 'white-space: pre-wrap' }, commandErrorText(err) || _('Import profile failed')),
-                    E('div', { 'class': 'right' }, [
-                        E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Close import error'))
-                    ])
-                ]);
-            });
+                                return uci.save().then(function () {
+                                    return ui.changes.apply();
+                                }).then(function () {
+                                    showCommandResult(_('Import profile completed'), _('Xray Simple profile imported'), true);
+                                });
+                            }).catch(function (err) {
+                                ui.showModal(_('Import profile failed'), [
+                                    E('pre', { 'style': 'white-space: pre-wrap' }, commandErrorText(err) || _('Import profile failed')),
+                                    E('div', { 'class': 'right' }, [
+                                        E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Close import error'))
+                                    ])
+                                ]);
+                            });
+                        }
+                    }, _('Import as new profile'))
+                ])
+            ]);
         };
 
         ss = m.section(form.GridSection, 'profile', _('Xray Simple profiles'), _('Add a profile to import JSON, then use Switch & Restart for one-click switching.'));

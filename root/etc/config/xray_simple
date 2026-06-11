@@ -11,9 +11,6 @@ config general
 	option proxy_lan_dns '1'
 	option proxy_router_output '1'
 	option active_profile ''
-	option import_profile_name ''
-	option import_profile_description ''
-	option import_json ''
 	list lan_ifaces 'br-lan'
 
 config profile
