@@ -24,6 +24,21 @@ active_profile() {
 	uci_get active_profile ""
 }
 
+active_profile_label() {
+	local profile name
+	profile="$(active_profile)"
+	[ -n "$profile" ] || {
+		echo "none"
+		return
+	}
+	name="$(profile_get "$profile" name)"
+	if [ -n "$name" ]; then
+		echo "${name} (${profile})"
+	else
+		echo "$profile"
+	fi
+}
+
 profile_get() {
 	local section="$1"
 	local option="$2"
@@ -386,7 +401,7 @@ status_service() {
 	fi
 	echo
 	echo "nft mode: $(uci_get nft_mode firewall4)"
-	echo "active profile: $(active_profile)"
+	echo "active profile: $(active_profile_label)"
 	echo "mark: $(uci_get mark 1)"
 	echo "tproxy port: $(uci_get tproxy_port 12345)"
 	echo "asset dir: $(uci_get asset_dir /usr/share/xray)"
@@ -568,7 +583,7 @@ switch_profile() {
 	uci commit "$NAME"
 	reload_service || return 1
 	assert_running || return 1
-	echo "active profile switched to ${profile}"
+	echo "active profile switched to $(active_profile_label)"
 }
 
 export_profile() {
