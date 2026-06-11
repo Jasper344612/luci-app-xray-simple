@@ -3,7 +3,7 @@
         "title": "Xray Simple",
         "action": {
             "type": "view",
-            "path": "xray-simple/core"
+            "path": "xray-simple/core-v2"
         },
         "depends": {
             "acl": [

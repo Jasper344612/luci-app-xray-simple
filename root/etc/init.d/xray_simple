@@ -9,6 +9,7 @@ RUNDIR=/var/etc/xray-simple
 PIDFILE=/var/run/xray-simple.pid
 NFT_FILE="${RUNDIR}/fw4/01_xray_simple.nft"
 FW4_INCLUDE=/usr/share/nftables.d/table-pre/xray_simple.nft
+ROUTE_LOG="${RUNDIR}/route.log"
 
 uci_get() {
 	local ret
@@ -272,11 +273,13 @@ setup_routes() {
 	table_v4="$(uci_get route_table_v4 100)"
 	table_v6="$(uci_get route_table_v6 106)"
 
+	mkdir -p "$RUNDIR"
+	: > "$ROUTE_LOG"
 	flush_routes
-	ip rule add fwmark "$mark" table "$table_v4" 2>/dev/null
-	ip route add local 0.0.0.0/0 dev lo table "$table_v4" 2>/dev/null
-	ip -6 rule add fwmark "$mark" table "$table_v6" 2>/dev/null
-	ip -6 route add local default dev lo table "$table_v6" 2>/dev/null || ip -6 route add local ::/0 dev lo table "$table_v6" 2>/dev/null
+	ip rule add fwmark "$mark" table "$table_v4" 2>>"$ROUTE_LOG"
+	ip route add local 0.0.0.0/0 dev lo table "$table_v4" 2>>"$ROUTE_LOG"
+	ip -6 rule add fwmark "$mark" table "$table_v6" 2>>"$ROUTE_LOG"
+	ip -6 route add local ::/0 dev lo table "$table_v6" 2>>"$ROUTE_LOG"
 }
 
 flush_routes() {
@@ -288,7 +291,6 @@ flush_routes() {
 	while ip rule del fwmark "$mark" table "$table_v4" 2>/dev/null; do :; done
 	ip route del local 0.0.0.0/0 dev lo table "$table_v4" 2>/dev/null
 	while ip -6 rule del fwmark "$mark" table "$table_v6" 2>/dev/null; do :; done
-	ip -6 route del local default dev lo table "$table_v6" 2>/dev/null
 	ip -6 route del local ::/0 dev lo table "$table_v6" 2>/dev/null
 }
 
@@ -398,8 +400,9 @@ reload_service() {
 }
 
 status_service() {
-	local pids
+	local pids table_v6
 	pids="$(xray_pids)"
+	table_v6="$(uci_get route_table_v6 106)"
 	if [ -n "$pids" ]; then
 		echo "Xray Simple running, pid ${pids}"
 	else
@@ -414,6 +417,9 @@ status_service() {
 	echo
 	ip rule show | grep -E "fwmark|$(uci_get route_table_v4 100)" || true
 	ip -6 rule show | grep -E "fwmark|$(uci_get route_table_v6 106)" || true
+	if ! ip -6 route show table "$table_v6" 2>/dev/null | grep -Eq '(^|[[:space:]])local[[:space:]]+(default|::/0)'; then
+		echo "warning: IPv6 local route is missing in table ${table_v6}"
+	fi
 }
 
 xray_pids() {
@@ -579,6 +585,14 @@ nft_status() {
 	echo "=== IPv6 rules/routes ==="
 	ip -6 rule show 2>&1 | grep -E "fwmark|$(uci_get route_table_v6 106)" || true
 	ip -6 route show table "$(uci_get route_table_v6 106)" 2>&1 || true
+	if ! ip -6 route show table "$(uci_get route_table_v6 106)" 2>/dev/null | grep -Eq '(^|[[:space:]])local[[:space:]]+(default|::/0)'; then
+		echo "warning: IPv6 local route is missing in table $(uci_get route_table_v6 106)"
+	fi
+	if [ -s "$ROUTE_LOG" ]; then
+		echo
+		echo "=== route setup log ==="
+		cat "$ROUTE_LOG"
+	fi
 }
 
 geodata_status() {
@@ -613,6 +627,47 @@ switch_profile() {
 	reload_service || return 1
 	assert_running || return 1
 	echo "active profile switched to $(active_profile_label)"
+}
+
+import_profile() {
+	local profile_name="$1"
+	local profile_description="$2"
+	local json_file="${3:-/tmp/xray-simple-import.json}"
+	local profile json output
+
+	case "$json_file" in
+		/tmp/xray-simple-import.json) ;;
+		*)
+			echo "unsupported import path: $json_file"
+			return 1
+			;;
+	esac
+
+	profile_name="$(printf "%s" "$profile_name" | tr '\r\n' '  ')"
+	profile_description="$(printf "%s" "$profile_description" | tr '\r\n' '  ')"
+	[ -n "$profile_name" ] || profile_name="imported"
+
+	output="$(test_json_file "$json_file" 2>&1)" || {
+		printf "%s\n" "$output"
+		return 1
+	}
+	json="$(cat "$json_file")" || return 1
+
+	profile="$(uci add "$NAME" profile)" || {
+		echo "failed to create profile"
+		return 1
+	}
+	uci set "${NAME}.${profile}.name=${profile_name}"
+	if [ -n "$profile_description" ]; then
+		uci set "${NAME}.${profile}.description=${profile_description}"
+	else
+		uci -q delete "${NAME}.${profile}.description"
+	fi
+	uci set "${NAME}.${profile}.json_config=${json}"
+	uci set "${NAME}.@general[0].active_profile=${profile}"
+	uci commit "$NAME" || return 1
+
+	echo "imported profile: ${profile_name} (${profile})"
 }
 
 export_profile() {
@@ -660,6 +715,7 @@ extra_command "test_json_file" "Validate a JSON config file"
 extra_command "nft_status" "Show nftables and policy routing status"
 extra_command "geodata_status" "Show Xray geo database status"
 extra_command "switch_profile" "Switch active profile and reload"
+extra_command "import_profile" "Import a validated profile JSON file"
 extra_command "export_profile" "Print active or selected profile JSON"
 extra_command "start_now" "Enable in UCI and start"
 extra_command "stop_now" "Stop and disable in UCI"

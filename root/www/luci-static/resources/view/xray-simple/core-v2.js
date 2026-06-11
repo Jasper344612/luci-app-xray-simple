@@ -446,17 +446,9 @@ return view.extend({
                             return fs.write(importTestPath, json).then(function () {
                                 return fs.exec(initScript, ['test_json_file', importTestPath]);
                             }).then(function () {
-                                const profileId = uci.add(variant, 'profile');
-                                uci.set(variant, profileId, 'name', name);
-                                uci.set(variant, profileId, 'description', description);
-                                uci.set(variant, profileId, 'json_config', json);
-                                uci.set(variant, sectionId, 'active_profile', profileId);
-
-                                return uci.save().then(function () {
-                                    return ui.changes.apply();
-                                }).then(function () {
-                                    showCommandResult(_('Import profile completed'), _('Xray Simple profile imported'), true);
-                                });
+                                return fs.exec(initScript, ['import_profile', name, description, importTestPath]);
+                            }).then(function (res) {
+                                showCommandResult(_('Import profile completed'), res.stdout || _('Xray Simple profile imported'), true);
                             }).catch(function (err) {
                                 ui.showModal(_('Import profile failed'), [
                                     E('pre', { 'style': 'white-space: pre-wrap' }, commandErrorText(err) || _('Import profile failed')),

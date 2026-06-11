@@ -56,6 +56,14 @@ define Package/$(PKG_NAME)/conffiles
 /etc/config/xray_simple
 endef
 
+define Package/$(PKG_NAME)/postinst
+#!/bin/sh
+if [ -z "$${IPKG_INSTROOT}" ]; then
+	rm -rf /tmp/luci-indexcache* /tmp/luci-modulecache
+fi
+exit 0
+endef
+
 define Package/$(PKG_NAME)/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_DATA) ./root/etc/config/xray_simple $(1)/etc/config/xray_simple
@@ -70,7 +78,7 @@ define Package/$(PKG_NAME)/install
 	$(INSTALL_DIR) $(1)/usr/share/nftables.d/table-pre
 	$(INSTALL_DATA) ./root/usr/share/nftables.d/table-pre/xray_simple.nft $(1)/usr/share/nftables.d/table-pre/xray_simple.nft
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/xray-simple
-	$(INSTALL_DATA) ./root/www/luci-static/resources/view/xray-simple/core.js $(1)/www/luci-static/resources/view/xray-simple/core.js
+	$(INSTALL_DATA) ./root/www/luci-static/resources/view/xray-simple/core-v2.js $(1)/www/luci-static/resources/view/xray-simple/core-v2.js
 endef
 
 define Package/$(PKG_NAME)-zh/postinst

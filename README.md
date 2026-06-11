@@ -184,7 +184,7 @@ https://github.com/Jasper344612/luci-app-xray-simple/actions
 From this repository:
 
 ```sh
-node --check root/www/luci-static/resources/view/xray-simple/core.js
+node --check root/www/luci-static/resources/view/xray-simple/core-v2.js
 sh -n root/etc/init.d/xray_simple
 sh -n root/etc/uci-defaults/xray_simple
 jq . root/usr/share/rpcd/acl.d/luci-app-xray-simple.json
