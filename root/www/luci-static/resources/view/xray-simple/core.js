@@ -160,21 +160,48 @@ function jsonObjectValidator(value) {
     }
 }
 
+function parseGeodataStatus(output) {
+    const status = {
+        assetDir: '/usr/share/xray',
+        geoip: false,
+        geosite: false
+    };
+
+    (output || '').split(/\n/).forEach(function (line) {
+        const parts = line.split(':');
+        const key = parts.shift();
+        const value = parts.join(':').trim();
+
+        if (key === 'asset_dir') {
+            status.assetDir = value || status.assetDir;
+        } else if (key === 'geoip') {
+            status.geoip = value === 'found';
+        } else if (key === 'geosite') {
+            status.geosite = value === 'found';
+        }
+    });
+
+    return status;
+}
+
 return view.extend({
     load: function () {
-        return Promise.all([
-            uci.load(variant),
-            L.resolveDefault(fs.exec(initScript, ['status']), { stdout: _('Xray Simple status unavailable'), stderr: '' }),
-            L.resolveDefault(fs.read('/var/etc/xray-simple/fw4/01_xray_simple.nft'), '').then(function (fw4Rules) {
-                if (fw4Rules) {
-                    return fw4Rules;
-                }
-                return L.resolveDefault(fs.read('/var/etc/xray-simple/direct_xray_simple.nft'), '');
-            })
-        ]);
+        return uci.load(variant).then(function () {
+            return Promise.all([
+                L.resolveDefault(fs.exec(initScript, ['geodata_status']), { stdout: '', stderr: '' }),
+                L.resolveDefault(fs.exec(initScript, ['status']), { stdout: _('Xray Simple status unavailable'), stderr: '' }),
+                L.resolveDefault(fs.read('/var/etc/xray-simple/fw4/01_xray_simple.nft'), '').then(function (fw4Rules) {
+                    if (fw4Rules) {
+                        return fw4Rules;
+                    }
+                    return L.resolveDefault(fs.read('/var/etc/xray-simple/direct_xray_simple.nft'), '');
+                })
+            ]);
+        });
     },
 
     render: function (loadResult) {
+        const geodataStatus = parseGeodataStatus(loadResult[0].stdout);
         const status = loadResult[1];
         const generatedNft = loadResult[2];
         const profiles = uci.sections(variant, 'profile') || [];
@@ -199,9 +226,43 @@ return view.extend({
         o.default = '/usr/bin/xray';
         o.rmempty = false;
 
-        o = s.taboption('system', form.Value, 'asset_dir', _('Xray asset directory'));
+        o = s.taboption('system', form.Value, 'asset_dir', _('Xray asset directory'), _('Default geodata download directory. Xray Simple sets XRAY_LOCATION_ASSET to this directory when validating and running Xray.'));
         o.default = '/usr/share/xray';
         o.rmempty = false;
+
+        o = s.taboption('system', form.DummyValue, '_geodata_notice', _('Geo database'));
+        o.rawhtml = true;
+        o.renderWidget = function () {
+            const missing = [];
+            if (!geodataStatus.geoip) {
+                missing.push('geoip.dat');
+            }
+            if (!geodataStatus.geosite) {
+                missing.push('geosite.dat');
+            }
+
+            if (missing.length === 0) {
+                return E('div', {
+                    'class': 'cbi-value-description',
+                    'style': 'border-left: 4px solid #5cb85c; background: rgba(92, 184, 92, 0.10); padding: .75rem 1rem; border-radius: 6px; max-width: 70em'
+                }, _('Geo database files found in %s.').format(geodataStatus.assetDir));
+            }
+
+            return E('div', {
+                'class': 'cbi-value-description',
+                'style': 'border-left: 4px solid #f0ad4e; background: rgba(240, 173, 78, 0.12); padding: .75rem 1rem; border-radius: 6px; max-width: 70em; line-height: 1.55'
+            }, [
+                E('strong', {}, _('Geo database required: ')),
+                _('Missing %s in %s. If your JSON uses geoip: or geosite: rules, install geodata packages or download the files and place them in this directory.').format(missing.join(', '), geodataStatus.assetDir),
+                E('br'),
+                E('code', {}, 'opkg update && opkg install v2ray-geoip v2ray-geosite'),
+                E('br'),
+                E('span', {}, _('Download sources: ')),
+                E('a', { 'href': 'https://github.com/v2fly/geoip', 'target': '_blank', 'rel': 'noopener noreferrer' }, 'geoip.dat'),
+                E('span', {}, ' / '),
+                E('a', { 'href': 'https://github.com/v2fly/domain-list-community', 'target': '_blank', 'rel': 'noopener noreferrer' }, 'geosite.dat')
+            ]);
+        };
 
         o = s.taboption('system', form.ListValue, 'nft_mode', _('Rule loading mode'));
         o.value('firewall4', _('firewall4 include'));

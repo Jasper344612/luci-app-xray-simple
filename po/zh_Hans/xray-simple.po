@@ -35,6 +35,12 @@ msgstr "绕过 UID"
 msgid "Description"
 msgstr "简介"
 
+msgid "Default geodata download directory. Xray Simple sets XRAY_LOCATION_ASSET to this directory when validating and running Xray."
+msgstr "默认 geodata 下载目录。Xray Simple 在校验和运行 Xray 时会将 XRAY_LOCATION_ASSET 设置为此目录。"
+
+msgid "Download sources: "
+msgstr "下载来源："
+
 msgid "Enable Xray Simple"
 msgstr "启用 Xray Simple"
 
@@ -46,6 +52,15 @@ msgstr "导出配置"
 
 msgid "GID must be numeric"
 msgstr "GID 必须是数字"
+
+msgid "Geo database"
+msgstr "Geo 数据库"
+
+msgid "Geo database files found in %s."
+msgstr "已在 %s 中找到 Geo 数据库文件。"
+
+msgid "Geo database required: "
+msgstr "需要 Geo 数据库："
 
 msgid "Generated nftables rules"
 msgstr "生成的 nftables 规则"
@@ -76,6 +91,9 @@ msgstr "重要："
 
 msgid "Import profile description"
 msgstr "导入配置简介"
+
+msgid "Missing %s in %s. If your JSON uses geoip: or geosite: rules, install geodata packages or download the files and place them in this directory."
+msgstr "缺少 %s，目录：%s。如果你的 JSON 使用 geoip: 或 geosite: 规则，请安装 geodata 软件包，或者下载文件并放到这个目录。"
 
 msgid "Invalid CIDR prefix length"
 msgstr "CIDR 前缀长度无效"

@@ -568,6 +568,22 @@ nft_status() {
 	ip -6 route show table "$(uci_get route_table_v6 106)" 2>&1 || true
 }
 
+geodata_status() {
+	local asset_dir
+	asset_dir="$(uci_get asset_dir /usr/share/xray)"
+	echo "asset_dir: ${asset_dir}"
+	if [ -s "${asset_dir}/geoip.dat" ]; then
+		echo "geoip: found"
+	else
+		echo "geoip: missing"
+	fi
+	if [ -s "${asset_dir}/geosite.dat" ]; then
+		echo "geosite: found"
+	else
+		echo "geosite: missing"
+	fi
+}
+
 switch_profile() {
 	local profile="$1"
 	[ -n "$profile" ] || {
@@ -629,6 +645,7 @@ restart_now() {
 extra_command "test_config" "Validate active Xray JSON configuration"
 extra_command "test_json_file" "Validate a JSON config file"
 extra_command "nft_status" "Show nftables and policy routing status"
+extra_command "geodata_status" "Show Xray geo database status"
 extra_command "switch_profile" "Switch active profile and reload"
 extra_command "export_profile" "Print active or selected profile JSON"
 extra_command "start_now" "Enable in UCI and start"
