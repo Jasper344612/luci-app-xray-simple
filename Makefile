@@ -47,6 +47,8 @@ if [ -z "$${IPKG_INSTROOT}" ]; then
 		( . /etc/uci-defaults/xray_simple ) && rm -f /etc/uci-defaults/xray_simple
 	fi
 	/etc/init.d/rpcd reload >/dev/null 2>&1 || /etc/init.d/rpcd restart >/dev/null 2>&1 || true
+	# LuCI caches menu/view metadata aggressively; clear it so upgrades load
+	# newly installed view files without requiring a reboot.
 	rm -rf /tmp/luci-indexcache* /tmp/luci-modulecache
 fi
 exit 0
@@ -54,14 +56,6 @@ endef
 
 define Package/$(PKG_NAME)/conffiles
 /etc/config/xray_simple
-endef
-
-define Package/$(PKG_NAME)/postinst
-#!/bin/sh
-if [ -z "$${IPKG_INSTROOT}" ]; then
-	rm -rf /tmp/luci-indexcache* /tmp/luci-modulecache
-fi
-exit 0
 endef
 
 define Package/$(PKG_NAME)/install

@@ -7,6 +7,8 @@
 
 const variant = 'xray_simple';
 const initScript = '/etc/init.d/xray_simple';
+// Import validation writes to a fixed temporary file because rpcd ACLs need
+// explicit file paths; arbitrary upload paths would require broader privileges.
 const importTestPath = '/tmp/xray-simple-import.json';
 
 function parsePositiveInteger(value, name) {
@@ -68,6 +70,8 @@ function profileBySection(profiles, sectionId) {
 }
 
 function currentProfileSection(profiles, configuredSection) {
+    // active_profile stores a UCI section id, not the display name. Falling back
+    // to the first profile keeps the editor usable after a deleted profile.
     if (profileBySection(profiles, configuredSection)) {
         return configuredSection;
     }
@@ -111,6 +115,8 @@ function showCommandError(title, err) {
 }
 
 function showCommandResult(title, text, reloadAfterClose) {
+    // Delay reload until the user closes the modal so short-lived failures and
+    // command output remain visible instead of flashing away immediately.
     ui.showModal(title, [
         E('pre', { 'style': 'white-space: pre-wrap' }, text || _('Xray Simple command completed')),
         E('div', { 'class': 'right' }, [
@@ -195,6 +201,8 @@ function parseGeodataStatus(output) {
 
 return view.extend({
     load: function () {
+        // The view needs both UCI data and live init-script status. Missing
+        // runtime files are expected before the service has ever started.
         return uci.load(variant).then(function () {
             return Promise.all([
                 L.resolveDefault(fs.exec(initScript, ['geodata_status']), { stdout: '', stderr: '' }),
@@ -378,6 +386,8 @@ return view.extend({
             return uci.get(variant, sectionId, 'json_config') || '{}';
         };
         jsonConfigOpt.write = function (sectionId, value) {
+            // The JSON editor edits the selected profile, while the surrounding
+            // form still belongs to the singleton general section.
             const profileId = currentProfileSection(profiles, activeProfileOpt.formvalue(sectionId) || '');
             if (profileBySection(profiles, profileId)) {
                 uci.set(variant, profileId, 'json_config', value);
@@ -389,6 +399,8 @@ return view.extend({
             return jsonObjectValidator(value);
         };
         activeProfileOpt.onchange = function (ev, sectionId, value) {
+            // LuCI does not automatically re-render dependent TextValue fields
+            // on ListValue changes, so update the visible editor in-place.
             const profile = profileBySection(profiles, value);
             const editor = document.getElementById(jsonConfigOpt.cbid(sectionId));
             if (profile && editor) {
@@ -443,6 +455,9 @@ return view.extend({
                             const description = elementValue(descriptionId).trim();
                             const json = elementValue(jsonId);
 
+                            // Validation and UCI section creation are performed
+                            // by the init script to avoid frontend temporary IDs
+                            // becoming the persisted active_profile value.
                             return fs.write(importTestPath, json).then(function () {
                                 return fs.exec(initScript, ['test_json_file', importTestPath]);
                             }).then(function () {

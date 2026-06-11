@@ -8,6 +8,8 @@ NAME=xray_simple
 RUNDIR=/var/etc/xray-simple
 PIDFILE=/var/run/xray-simple.pid
 NFT_FILE="${RUNDIR}/fw4/01_xray_simple.nft"
+# firewall4 loads files from table-pre before materializing the inet fw4 table.
+# Keeping only an include here lets runtime-generated rules live under /var.
 FW4_INCLUDE=/usr/share/nftables.d/table-pre/xray_simple.nft
 ROUTE_LOG="${RUNDIR}/route.log"
 
@@ -28,6 +30,8 @@ active_profile() {
 		echo "$profile"
 		return
 	fi
+	# A blank or deleted active_profile falls back to the first profile so the
+	# init script can still start after partial config edits.
 	uci -q show "$NAME" | sed -n "s/^${NAME}\.\([^.=]*\)=profile$/\1/p" | head -n 1
 }
 
@@ -55,6 +59,8 @@ profile_get() {
 xray_env() {
 	local asset_dir
 	asset_dir="$(uci_get asset_dir /usr/share/xray)"
+	# Xray reads geoip.dat/geosite.dat from XRAY_LOCATION_ASSET; keep validation
+	# and runtime behavior identical by setting it for every xray invocation.
 	XRAY_LOCATION_ASSET="$asset_dir" "$@"
 }
 
@@ -120,6 +126,8 @@ write_config() {
 	if [ -z "$json" ]; then
 		json="$(uci_get json_config "{}")"
 	fi
+	# Xray accepts a confdir, so the selected profile is materialized as the
+	# single runtime config.json instead of pointing Xray at UCI directly.
 	printf "%s\n" "$json" > "${RUNDIR}/config.json"
 }
 
@@ -183,6 +191,8 @@ write_nft() {
 	fi
 
 	cat >> "$NFT_FILE" <<-EOF
+	        # Keep private/LAN destinations direct by default. UDP/53 is handled
+	        # above first so LAN DNS can still be intercepted when enabled.
 	        ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } return
 	        ip daddr @bypass_ipv4 return
 	        ip6 daddr fc00::/7 return
@@ -192,6 +202,8 @@ write_nft() {
 	if [ "$proxy_lan_dns" = "1" ]; then
 		if [ -n "$lan_ifaces" ]; then
 			cat >> "$NFT_FILE" <<-EOF
+	        # In inet tables, TProxy targets must be split by address family.
+	        # This mirrors luci-app-xray and avoids ambiguous meta l4proto rules.
 	        ip protocol tcp iifname { ${lan_ifaces} } meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
 	        ip protocol udp iifname { ${lan_ifaces} } meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
 	        ip6 nexthdr tcp iifname { ${lan_ifaces} } meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
@@ -276,6 +288,10 @@ setup_routes() {
 	mkdir -p "$RUNDIR"
 	: > "$ROUTE_LOG"
 	flush_routes
+	# TProxy marks packets in prerouting/output; policy routing then resolves
+	# those marked destinations as local so Xray's transparent socket receives
+	# them on loopback. IPv6 intentionally uses ::/0, matching the reference
+	# TProxy scripts and avoiding ambiguous "default" syntax on some systems.
 	ip rule add fwmark "$mark" table "$table_v4" 2>>"$ROUTE_LOG"
 	ip route add local 0.0.0.0/0 dev lo table "$table_v4" 2>>"$ROUTE_LOG"
 	ip -6 rule add fwmark "$mark" table "$table_v6" 2>>"$ROUTE_LOG"
@@ -300,6 +316,8 @@ load_firewall() {
 	nft_mode="$(uci_get nft_mode firewall4)"
 
 	if [ "$nft_mode" = "direct" ]; then
+		# Mode switching must clean the other mode first. Otherwise stale fw4
+		# chains/direct tables keep intercepting traffic after the UI mode changes.
 		rm -f "${RUNDIR}"/fw4/*.nft
 		/etc/init.d/firewall restart >/dev/null 2>&1
 		nft delete table inet xray_simple 2>/dev/null
@@ -309,6 +327,8 @@ load_firewall() {
 			return 1
 		fi
 	else
+		# firewall4 owns table inet fw4, so runtime rules are included by fw4
+		# instead of loading a second base table directly.
 		nft delete table inet xray_simple 2>/dev/null
 		rm -f "${RUNDIR}/direct_xray_simple.nft"
 		ensure_fw4_include
@@ -355,6 +375,8 @@ start_service() {
 	write_nft
 	setup_routes
 	load_firewall || {
+		# If nft/fw4 loading fails, remove any half-applied plumbing before
+		# procd gets a chance to start Xray behind broken routing rules.
 		rollback_firewall
 		flush_routes
 		return 1
@@ -497,6 +519,8 @@ test_json_file() {
 		return 1
 	}
 
+	# Newer Xray builds support "test"; OpenWrt builds have historically varied,
+	# so keep the older "run -test" fallback for package compatibility.
 	output="$(xray_env "$xray_bin" test -confdir "$test_dir" 2>&1)"
 	if [ "$?" = "0" ]; then
 		rm -rf "$test_dir"
@@ -550,6 +574,8 @@ nft_status() {
 	echo "=== nft mode ==="
 	echo "$nft_mode"
 	echo
+	# Always show both direct and fw4 state. This deliberately exposes stale
+	# rules left by mode switching bugs instead of hiding the inactive mode.
 	if [ "$nft_mode" = "direct" ]; then
 		echo "=== direct nft table inet xray_simple ==="
 		show_nft_table inet xray_simple
@@ -647,6 +673,8 @@ import_profile() {
 	profile_description="$(printf "%s" "$profile_description" | tr '\r\n' '  ')"
 	[ -n "$profile_name" ] || profile_name="imported"
 
+	# Profiles are created server-side so LuCI's temporary frontend section IDs
+	# cannot desynchronize active_profile from the actual UCI section name.
 	output="$(test_json_file "$json_file" 2>&1)" || {
 		printf "%s\n" "$output"
 		return 1
