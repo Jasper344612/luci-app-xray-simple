@@ -170,13 +170,13 @@ write_nft() {
 	if [ "$proxy_lan_dns" = "1" ]; then
 		if [ -n "$lan_ifaces" ]; then
 			cat >> "$NFT_FILE" <<-EOF
-	        iifname { ${lan_ifaces} } udp dport 53 meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
-	        iifname { ${lan_ifaces} } udp dport 53 meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
+	        ip protocol udp iifname { ${lan_ifaces} } udp dport 53 meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
+	        ip6 nexthdr udp iifname { ${lan_ifaces} } udp dport 53 meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
 	EOF
 		else
 			cat >> "$NFT_FILE" <<-EOF
-	        udp dport 53 meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
-	        udp dport 53 meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
+	        ip protocol udp udp dport 53 meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
+	        ip6 nexthdr udp udp dport 53 meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
 	EOF
 		fi
 	fi
@@ -191,29 +191,33 @@ write_nft() {
 	if [ "$proxy_lan_dns" = "1" ]; then
 		if [ -n "$lan_ifaces" ]; then
 			cat >> "$NFT_FILE" <<-EOF
-	        iifname { ${lan_ifaces} } meta l4proto { tcp, udp } meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
-	        iifname { ${lan_ifaces} } meta l4proto { tcp, udp } meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
+	        ip protocol tcp iifname { ${lan_ifaces} } meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
+	        ip protocol udp iifname { ${lan_ifaces} } meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
+	        ip6 nexthdr tcp iifname { ${lan_ifaces} } meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
+	        ip6 nexthdr udp iifname { ${lan_ifaces} } meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
 	EOF
 		else
 			cat >> "$NFT_FILE" <<-EOF
-	        meta l4proto { tcp, udp } meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
-	        meta l4proto { tcp, udp } meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
+	        ip protocol tcp meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
+	        ip protocol udp meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
+	        ip6 nexthdr tcp meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
+	        ip6 nexthdr udp meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
 	EOF
 		fi
 	else
 		if [ -n "$lan_ifaces" ]; then
 			cat >> "$NFT_FILE" <<-EOF
-	        iifname { ${lan_ifaces} } tcp dport != 53 meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
-	        iifname { ${lan_ifaces} } udp dport != 53 meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
-	        iifname { ${lan_ifaces} } tcp dport != 53 meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
-	        iifname { ${lan_ifaces} } udp dport != 53 meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
+	        ip protocol tcp iifname { ${lan_ifaces} } tcp dport != 53 meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
+	        ip protocol udp iifname { ${lan_ifaces} } udp dport != 53 meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
+	        ip6 nexthdr tcp iifname { ${lan_ifaces} } tcp dport != 53 meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
+	        ip6 nexthdr udp iifname { ${lan_ifaces} } udp dport != 53 meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
 	EOF
 		else
 			cat >> "$NFT_FILE" <<-EOF
-	        tcp dport != 53 meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
-	        udp dport != 53 meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
-	        tcp dport != 53 meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
-	        udp dport != 53 meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
+	        ip protocol tcp tcp dport != 53 meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
+	        ip protocol udp udp dport != 53 meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
+	        ip6 nexthdr tcp tcp dport != 53 meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
+	        ip6 nexthdr udp udp dport != 53 meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
 	EOF
 		fi
 	fi
@@ -247,7 +251,10 @@ write_nft() {
 	        ip6 daddr { ::1/128, fe80::/10 } return
 	        ip6 daddr fc00::/7 return
 	        ip6 daddr @bypass_ipv6 return
-	        meta l4proto { tcp, udp } meta mark set ${mark_h} accept
+	        ip protocol tcp meta mark set ${mark_h} accept
+	        ip protocol udp meta mark set ${mark_h} accept
+	        ip6 nexthdr tcp meta mark set ${mark_h} accept
+	        ip6 nexthdr udp meta mark set ${mark_h} accept
 	    }
 	EOF
 	fi
@@ -269,7 +276,7 @@ setup_routes() {
 	ip rule add fwmark "$mark" table "$table_v4" 2>/dev/null
 	ip route add local 0.0.0.0/0 dev lo table "$table_v4" 2>/dev/null
 	ip -6 rule add fwmark "$mark" table "$table_v6" 2>/dev/null
-	ip -6 route add local ::/0 dev lo table "$table_v6" 2>/dev/null
+	ip -6 route add local default dev lo table "$table_v6" 2>/dev/null || ip -6 route add local ::/0 dev lo table "$table_v6" 2>/dev/null
 }
 
 flush_routes() {
@@ -281,6 +288,7 @@ flush_routes() {
 	while ip rule del fwmark "$mark" table "$table_v4" 2>/dev/null; do :; done
 	ip route del local 0.0.0.0/0 dev lo table "$table_v4" 2>/dev/null
 	while ip -6 rule del fwmark "$mark" table "$table_v6" 2>/dev/null; do :; done
+	ip -6 route del local default dev lo table "$table_v6" 2>/dev/null
 	ip -6 route del local ::/0 dev lo table "$table_v6" 2>/dev/null
 }
 
