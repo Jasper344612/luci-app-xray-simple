@@ -193,4 +193,4 @@ msgfmt --check-format -o /tmp/xray-simple.mo po/zh_Hans/xray-simple.po
 
 ## License
 
-The OpenWrt package metadata declares MPL-2.0. Keep `LICENSE` aligned with that metadata when publishing releases.
+This project is licensed under the Mozilla Public License Version 2.0. See [LICENSE](LICENSE).
