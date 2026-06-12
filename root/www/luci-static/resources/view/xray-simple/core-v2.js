@@ -481,6 +481,8 @@ return view.extend({
         ss = m.section(form.GridSection, 'profile', _('Xray Simple profiles'), _('Add a profile to import JSON, then use Switch & Restart for one-click switching.'));
         ss.anonymous = true;
         ss.addremove = true;
+        ss.modaladd = true;
+        ss.rowactions = true;
         ss.sortable = true;
         ss.nodescriptions = true;
 

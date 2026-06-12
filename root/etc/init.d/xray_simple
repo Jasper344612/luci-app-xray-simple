@@ -685,14 +685,14 @@ import_profile() {
 		echo "failed to create profile"
 		return 1
 	}
-	uci set "${NAME}.${profile}.name=${profile_name}"
+	uci set "${NAME}.${profile}.name" "$profile_name"
 	if [ -n "$profile_description" ]; then
-		uci set "${NAME}.${profile}.description=${profile_description}"
+		uci set "${NAME}.${profile}.description" "$profile_description"
 	else
 		uci -q delete "${NAME}.${profile}.description"
 	fi
-	uci set "${NAME}.${profile}.json_config=${json}"
-	uci set "${NAME}.@general[0].active_profile=${profile}"
+	uci set "${NAME}.${profile}.json_config" "$json"
+	uci set "${NAME}.@general[0].active_profile" "$profile"
 	uci commit "$NAME" || return 1
 
 	echo "imported profile: ${profile_name} (${profile})"
