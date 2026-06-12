@@ -396,17 +396,7 @@ return view.extend({
             }
         };
         jsonConfigOpt.validate = function (sectionId, value) {
-            const jsonErr = jsonObjectValidator(value);
-            if (jsonErr !== true) {
-                return jsonErr;
-            }
-            return fs.write(importTestPath, value).then(function () {
-                return fs.exec(initScript, ['test_json_file', importTestPath]);
-            }).then(function () {
-                return true;
-            }).catch(function (err) {
-                return commandErrorText(err) || _('Xray config validation failed');
-            });
+            return jsonObjectValidator(value);
         };
         activeProfileOpt.onchange = function (ev, sectionId, value) {
             // LuCI does not automatically re-render dependent TextValue fields
@@ -458,17 +448,7 @@ return view.extend({
             return uci.get(variant, sectionId, 'json_config') || '{}';
         };
         o.validate = function (sectionId, value) {
-            const jsonErr = jsonObjectValidator(value);
-            if (jsonErr !== true) {
-                return jsonErr;
-            }
-            return fs.write(importTestPath, value).then(function () {
-                return fs.exec(initScript, ['test_json_file', importTestPath]);
-            }).then(function () {
-                return true;
-            }).catch(function (err) {
-                return commandErrorText(err) || _('Xray config validation failed');
-            });
+            return jsonObjectValidator(value);
         };
 
         o = ss.option(form.DummyValue, '_profile_actions', _('Profile actions'));
@@ -529,6 +509,67 @@ return view.extend({
         o.rawhtml = true;
         o.cfgvalue = function () {
             return E('pre', { 'style': 'max-height: 32em; overflow: auto; white-space: pre-wrap' }, generatedNft || _('No generated rules yet'));
+        };
+
+        m.save = function () {
+            const self = this;
+            return self.reset().then(function () {
+                self.write();
+
+                const configsToTest = [];
+
+                // 1. Get json_config of general section
+                const mainJson = uci.get(variant, 'general', 'json_config');
+                if (mainJson) {
+                    configsToTest.push({ label: _('Active config'), value: mainJson });
+                }
+
+                // 2. Get json_config of all profile sections
+                const sections = uci.sections(variant, 'profile') || [];
+                sections.forEach(function (s) {
+                    const name = s.name || s['.name'];
+                    const json = s.json_config;
+                    if (json) {
+                        configsToTest.push({ label: _('Profile: %s').format(name), value: json });
+                    }
+                });
+
+                // 3. Chain validation sequentially
+                let chain = Promise.resolve();
+                configsToTest.forEach(function (item) {
+                    chain = chain.then(function () {
+                        const jsonErr = jsonObjectValidator(item.value);
+                        if (jsonErr !== true) {
+                            return Promise.reject(_('Syntax error in %s: %s').format(item.label, jsonErr));
+                        }
+                        return fs.write(importTestPath, item.value).then(function () {
+                            return fs.exec(initScript, ['test_json_file', importTestPath]);
+                        }).then(function () {
+                            // Validation passed, proceed
+                        }).catch(function (err) {
+                            const detail = commandErrorText(err) || _('Validation failed');
+                            return Promise.reject(_('%s test failed:\n\n%s').format(item.label, detail));
+                        });
+                    });
+                });
+
+                return chain;
+            }).then(function () {
+                return uci.save();
+            }).catch(function (err) {
+                ui.showModal(_('Xray Configuration Validation Failed'), [
+                    E('pre', { 'style': 'white-space: pre-wrap; word-break: break-all; max-height: 24em; overflow: auto' }, String(err)),
+                    E('div', { 'class': 'right' }, [
+                        E('button', {
+                            'class': 'btn',
+                            'click': function () {
+                                ui.hideModal();
+                            }
+                        }, _('Close'))
+                    ])
+                ]);
+                return Promise.reject(err);
+            });
         };
 
         return m.render();
