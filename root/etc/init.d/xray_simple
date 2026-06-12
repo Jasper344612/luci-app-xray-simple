@@ -13,16 +13,23 @@ NFT_FILE="${RUNDIR}/fw4/01_xray_simple.nft"
 FW4_INCLUDE=/usr/share/nftables.d/table-pre/xray_simple.nft
 ROUTE_LOG="${RUNDIR}/route.log"
 
+# 获取 @general[0] 下的 UCI 配置项值，若未配置则使用默认值
+# $1: 配置选项名称
+# $2: 默认值
 uci_get() {
 	local ret
 	ret="$(uci -q get ${NAME}.@general[0].$1)"
 	echo "${ret:-$2}"
 }
 
+# 获取 @general[0] 下的 UCI 列表配置项值
+# $1: 配置选项名称
 uci_list() {
 	uci -q get ${NAME}.@general[0].$1
 }
 
+# 获取当前处于激活状态的 profile 标识符。若未指定或失效，则默认回退到第一个有效 profile
+# 返回值: 激活的 profile section ID
 active_profile() {
 	local profile
 	profile="$(uci_get active_profile "")"
@@ -35,6 +42,8 @@ active_profile() {
 	uci -q show "$NAME" | sed -n "s/^${NAME}\.\([^.=]*\)=profile$/\1/p" | head -n 1
 }
 
+# 获取当前激活 profile 的展示名称。如果存在自定义 name 属性则显示 "name (id)"，否则直接显示 id
+# 返回值: 展示名称字符串
 active_profile_label() {
 	local profile name
 	profile="$(active_profile)"
@@ -50,12 +59,17 @@ active_profile_label() {
 	fi
 }
 
+# 获取特定 profile section 下的具体配置选项值
+# $1: profile section 标识符
+# $2: 选项名
 profile_get() {
 	local section="$1"
 	local option="$2"
 	uci -q get "${NAME}.${section}.${option}"
 }
 
+# 为 Xray 运行环境设置资源目录环境变量，并在该环境下执行传入的命令
+# $1及之后: 待运行的 xray 命令及参数
 xray_env() {
 	local asset_dir
 	asset_dir="$(uci_get asset_dir /usr/share/xray)"
@@ -64,10 +78,14 @@ xray_env() {
 	XRAY_LOCATION_ASSET="$asset_dir" "$@"
 }
 
+# 将十进制的策略路由防火墙标记数值转换为 8 位十六进制表示 (例如 1 -> 0x00000001)
+# $1: 十进制标记数值
 mark_hex() {
 	printf "0x%08x" "$1"
 }
 
+# 将空格分隔的 IP 列表转换为以逗号分隔的 nftables 集合元素格式
+# $1: 空格分隔的 IP 地址/网络前缀列表
 nft_set_body() {
 	local values="$1"
 	local out=""
@@ -81,6 +99,8 @@ nft_set_body() {
 	echo "$out"
 }
 
+# 将空格分隔的接口名等字符串列表转换为带有双引号且以逗号分隔的 nftables 集合元素格式
+# $1: 空格分隔的字符串列表
 nft_string_set_body() {
 	local values="$1"
 	local out=""
@@ -94,6 +114,10 @@ nft_string_set_body() {
 	echo "$out"
 }
 
+# 在当前的 NFT_FILE 规则文件中定义并写入一个 nftables 集合
+# $1: 集合名称
+# $2: 集合类型 (如 ipv4_addr, ipv6_addr 等)
+# $3: 集合内以逗号分隔的元素列表值
 nft_write_set() {
 	local name="$1"
 	local type="$2"
@@ -115,6 +139,7 @@ nft_write_set() {
 	EOF
 }
 
+# 将当前激活 profile 的 JSON 配置或是通用 json_config 写入到运行目录的 config.json 中
 write_config() {
 	local profile json
 
@@ -131,9 +156,13 @@ write_config() {
 	printf "%s\n" "$json" > "${RUNDIR}/config.json"
 }
 
+# 根据 UCI 配置渲染并生成相应的 nftables 规则文件。
+# 支持 fw4 include 引用模式和 direct 直接加载模式。
+# 渲染内容包含：主入站/出站转发链规则、绕过规则集合、TCP/UDP TProxy 端口拦截、LAN 接口过滤和 DNS 重定向过滤等。
 write_nft() {
 	local tproxy_port mark outbound_mark mark_h outbound_mark_h proxy_lan_dns proxy_router_output
 	local bypass_ipv4 bypass_ipv6 nft_mode lan_ifaces bypass_uids bypass_gids wrap_table
+	local lan_match private_ipv4 private_ipv6
 
 	nft_mode="$(uci_get nft_mode firewall4)"
 	if [ "$nft_mode" = "direct" ]; then
@@ -157,6 +186,10 @@ write_nft() {
 	lan_ifaces="$(nft_string_set_body "$(uci_list lan_ifaces)")"
 	bypass_uids="$(nft_set_body "$(uci_list bypass_uids)" "")"
 	bypass_gids="$(nft_set_body "$(uci_list bypass_gids)" "")"
+	private_ipv4="{ 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 }"
+	private_ipv6="fc00::/7"
+	lan_match=""
+	[ -n "$lan_ifaces" ] && lan_match="iifname { ${lan_ifaces} } "
 
 	mkdir -p "$(dirname "$NFT_FILE")"
 	: > "$NFT_FILE"
@@ -169,75 +202,54 @@ write_nft() {
 	nft_write_set "bypass_ipv6" "ipv6_addr" "$bypass_ipv6"
 	cat >> "$NFT_FILE" <<-EOF
 	    chain xray_simple_prerouting {
-	        # Keep this close to luci-app-xray's TProxy timing. The +10 offset
-	        # lets firewall4's own mangle hook run first while staying in mangle.
-	        type filter hook prerouting priority mangle +10; policy accept;
+	        type filter hook prerouting priority filter; policy accept;
 
 	        meta mark ${outbound_mark_h} return
-	        ip daddr { 127.0.0.0/8, 224.0.0.0/4, 255.255.255.255/32 } return
+	        ip daddr { 127.0.0.0/8, 224.0.0.0/4, 255.255.255.255 } return
+	        fib daddr type local return
+	EOF
+
+	if [ "$proxy_lan_dns" = "1" ]; then
+		cat >> "$NFT_FILE" <<-EOF
+	        meta l4proto tcp ip daddr ${private_ipv4} return
+	        ip daddr ${private_ipv4} udp dport != 53 return
+		EOF
+	else
+		cat >> "$NFT_FILE" <<-EOF
+	        ip daddr ${private_ipv4} return
+		EOF
+	fi
+
+	cat >> "$NFT_FILE" <<-EOF
+	        ip daddr @bypass_ipv4 return
 	        ip6 daddr { ::1/128, fe80::/10 } return
 	EOF
 
 	if [ "$proxy_lan_dns" = "1" ]; then
-		if [ -n "$lan_ifaces" ]; then
-			cat >> "$NFT_FILE" <<-EOF
-	        ip protocol udp iifname { ${lan_ifaces} } udp dport 53 meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
-	        ip6 nexthdr udp iifname { ${lan_ifaces} } udp dport 53 meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
-	EOF
-		else
-			cat >> "$NFT_FILE" <<-EOF
-	        ip protocol udp udp dport 53 meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
-	        ip6 nexthdr udp udp dport 53 meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
-	EOF
-		fi
+		cat >> "$NFT_FILE" <<-EOF
+	        meta l4proto tcp ip6 daddr ${private_ipv6} return
+	        ip6 daddr ${private_ipv6} udp dport != 53 return
+		EOF
+	else
+		cat >> "$NFT_FILE" <<-EOF
+	        ip6 daddr ${private_ipv6} return
+		EOF
 	fi
 
 	cat >> "$NFT_FILE" <<-EOF
-	        # Keep private/LAN destinations direct by default. UDP/53 is handled
-	        # above first so LAN DNS can still be intercepted when enabled.
-	        ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } return
-	        ip daddr @bypass_ipv4 return
-	        ip6 daddr fc00::/7 return
 	        ip6 daddr @bypass_ipv6 return
 	EOF
 
-	if [ "$proxy_lan_dns" = "1" ]; then
-		if [ -n "$lan_ifaces" ]; then
-			cat >> "$NFT_FILE" <<-EOF
-	        # In inet tables, TProxy targets must be split by address family.
-	        # This mirrors luci-app-xray and avoids ambiguous meta l4proto rules.
-	        ip protocol tcp iifname { ${lan_ifaces} } meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
-	        ip protocol udp iifname { ${lan_ifaces} } meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
-	        ip6 nexthdr tcp iifname { ${lan_ifaces} } meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
-	        ip6 nexthdr udp iifname { ${lan_ifaces} } meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
-	EOF
-		else
-			cat >> "$NFT_FILE" <<-EOF
-	        ip protocol tcp meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
-	        ip protocol udp meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
-	        ip6 nexthdr tcp meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
-	        ip6 nexthdr udp meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
-	EOF
-		fi
-	else
-		if [ -n "$lan_ifaces" ]; then
-			cat >> "$NFT_FILE" <<-EOF
-	        ip protocol tcp iifname { ${lan_ifaces} } tcp dport != 53 meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
-	        ip protocol udp iifname { ${lan_ifaces} } udp dport != 53 meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
-	        ip6 nexthdr tcp iifname { ${lan_ifaces} } tcp dport != 53 meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
-	        ip6 nexthdr udp iifname { ${lan_ifaces} } udp dport != 53 meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
-	EOF
-		else
-			cat >> "$NFT_FILE" <<-EOF
-	        ip protocol tcp tcp dport != 53 meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
-	        ip protocol udp udp dport != 53 meta mark set ${mark_h} tproxy ip to :${tproxy_port} accept
-	        ip6 nexthdr tcp tcp dport != 53 meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
-	        ip6 nexthdr udp udp dport != 53 meta mark set ${mark_h} tproxy ip6 to :${tproxy_port} accept
-	EOF
-		fi
+	if [ "$proxy_router_output" = "1" ] && [ -n "$lan_ifaces" ]; then
+		cat >> "$NFT_FILE" <<-EOF
+	        meta mark ${mark_h} meta l4proto { tcp, udp } tproxy ip to 127.0.0.1:${tproxy_port} accept
+	        meta mark ${mark_h} meta l4proto { tcp, udp } tproxy ip6 to [::1]:${tproxy_port} accept
+		EOF
 	fi
 
 	cat >> "$NFT_FILE" <<-EOF
+	        ${lan_match}meta l4proto { tcp, udp } meta mark set ${mark_h} tproxy ip to 127.0.0.1:${tproxy_port} accept
+	        ${lan_match}meta l4proto { tcp, udp } meta mark set ${mark_h} tproxy ip6 to [::1]:${tproxy_port} accept
 	    }
 	EOF
 
@@ -245,33 +257,51 @@ write_nft() {
 		cat >> "$NFT_FILE" <<-EOF
 
 	    chain xray_simple_output {
-	        # type route triggers route re-evaluation after marking router-local
-	        # packets. Keep the same mangle +10 timing used by prerouting.
-	        type route hook output priority mangle +10; policy accept;
+	        type route hook output priority filter; policy accept;
 
 	        meta mark ${outbound_mark_h} return
-	EOF
+		EOF
 		if [ -n "$bypass_uids" ]; then
 			cat >> "$NFT_FILE" <<-EOF
 	        meta skuid { ${bypass_uids} } return
-	EOF
+			EOF
 		fi
 		if [ -n "$bypass_gids" ]; then
 			cat >> "$NFT_FILE" <<-EOF
 	        meta skgid { ${bypass_gids} } return
-	EOF
+			EOF
 		fi
 		cat >> "$NFT_FILE" <<-EOF
-	        ip daddr { 127.0.0.0/8, 224.0.0.0/4, 255.255.255.255/32 } return
-	        ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } return
+	        ip daddr { 127.0.0.0/8, 224.0.0.0/4, 255.255.255.255 } return
+	        fib daddr type local return
+		EOF
+		if [ "$proxy_lan_dns" = "1" ]; then
+			cat >> "$NFT_FILE" <<-EOF
+	        meta l4proto tcp ip daddr ${private_ipv4} return
+	        ip daddr ${private_ipv4} udp dport != 53 return
+			EOF
+		else
+			cat >> "$NFT_FILE" <<-EOF
+	        ip daddr ${private_ipv4} return
+			EOF
+		fi
+		cat >> "$NFT_FILE" <<-EOF
 	        ip daddr @bypass_ipv4 return
 	        ip6 daddr { ::1/128, fe80::/10 } return
-	        ip6 daddr fc00::/7 return
+		EOF
+		if [ "$proxy_lan_dns" = "1" ]; then
+			cat >> "$NFT_FILE" <<-EOF
+	        meta l4proto tcp ip6 daddr ${private_ipv6} return
+	        ip6 daddr ${private_ipv6} udp dport != 53 return
+			EOF
+		else
+			cat >> "$NFT_FILE" <<-EOF
+	        ip6 daddr ${private_ipv6} return
+			EOF
+		fi
+		cat >> "$NFT_FILE" <<-EOF
 	        ip6 daddr @bypass_ipv6 return
-	        ip protocol tcp meta mark set ${mark_h} accept
-	        ip protocol udp meta mark set ${mark_h} accept
-	        ip6 nexthdr tcp meta mark set ${mark_h} accept
-	        ip6 nexthdr udp meta mark set ${mark_h} accept
+	        meta l4proto { tcp, udp } meta mark set ${mark_h} accept
 	    }
 	EOF
 	fi
@@ -283,6 +313,7 @@ write_nft() {
 	fi
 }
 
+# 配置 TProxy 所需的策略路由及本地路由规则，将打上特定 fwmark 的流量导入 lo 网卡。
 setup_routes() {
 	local mark table_v4 table_v6
 	mark="$(uci_get mark 1)"
@@ -302,6 +333,7 @@ setup_routes() {
 	ip -6 route add local ::/0 dev lo table "$table_v6" 2>>"$ROUTE_LOG"
 }
 
+# 清理所有由 setup_routes 配置的 ipv4 和 ipv6 策略路由及本地路由规则。
 flush_routes() {
 	local mark table_v4 table_v6
 	mark="$(uci_get mark 1)"
@@ -314,6 +346,7 @@ flush_routes() {
 	ip -6 route del local ::/0 dev lo table "$table_v6" 2>/dev/null
 }
 
+# 加载并应用 nftables 防火墙规则。根据 nft_mode 在 direct 模式直接加载，或在 firewall4 模式通过引用静态包含钩子并重启 firewall 生效。
 load_firewall() {
 	local nft_mode
 	local output
@@ -344,6 +377,7 @@ load_firewall() {
 	fi
 }
 
+# 卸载并清除 xray_simple 生成的全部 nftables 防火墙规则及相关文件，并重启系统防火墙服务。
 flush_firewall() {
 	nft delete table inet xray_simple 2>/dev/null
 	rm -f "${RUNDIR}/direct_xray_simple.nft"
@@ -351,6 +385,7 @@ flush_firewall() {
 	/etc/init.d/firewall restart
 }
 
+# 防火墙加载失败时的回滚函数。静默清理临时配置并重启防火墙，防止配置残留。
 rollback_firewall() {
 	nft delete table inet xray_simple 2>/dev/null
 	rm -f "${RUNDIR}/direct_xray_simple.nft"
@@ -358,11 +393,14 @@ rollback_firewall() {
 	/etc/init.d/firewall restart >/dev/null 2>&1
 }
 
+# 确保 firewall4 的静态包含钩子文件存在，并配置为引入 `/var/etc/xray-simple/fw4/` 下的所有 nft 规则文件。
 ensure_fw4_include() {
 	mkdir -p "$(dirname "$FW4_INCLUDE")"
 	printf '%s\n' 'include "/var/etc/xray-simple/fw4/*.nft"' > "$FW4_INCLUDE"
 }
 
+# procd 启动服务回调入口。
+# 依次进行：读取配置并校验、加载 TProxy 驱动模块、配置运行目录及 config.json、生成 nft 规则、开启策略路由、应用防火墙，并最终通过 procd 拉起 Xray 守护进程实例。
 start_service() {
 	[ "$(uci_get enabled 0)" = "1" ] || return 0
 
@@ -397,11 +435,13 @@ start_service() {
 	procd_close_instance
 }
 
+# procd 停止服务回调入口。清理生成的防火墙规则并释放策略路由。
 stop_service() {
 	flush_firewall
 	flush_routes
 }
 
+# 命令行自定义命令：单独开启 TProxy 防火墙劫持规则和策略路由（不启动 Xray 进程本身）。
 start_tproxy() {
 	modprobe nft_tproxy 2>/dev/null
 	write_nft
@@ -414,17 +454,20 @@ start_tproxy() {
 	echo "Xray Simple TProxy rules started."
 }
 
+# 命令行自定义命令：单独清理 TProxy 相关的防火墙与策略路由。
 stop_tproxy() {
 	flush_firewall
 	flush_routes
 	echo "Xray Simple TProxy rules stopped."
 }
 
+# 重载服务。先停止服务，再启动服务。
 reload_service() {
 	stop
 	start
 }
 
+# 输出当前服务的运行状态。包括进程运行状态 PID、配置模式、路由标记、各地址族策略路由配置，以及 IPv6 路由缺失校验。
 status_service() {
 	local pids table_v6
 	pids="$(xray_pids)"
@@ -448,14 +491,18 @@ status_service() {
 	fi
 }
 
+# 查询当前运行的、由 xray_simple 管理的 Xray 进程 PID 列表。
+# 返回值: 空格分隔的 PID 字符串
 xray_pids() {
 	ps w 2>/dev/null | awk '$5 ~ /(^|\/)xray$/ && index($0, " run ") && index($0, "confdir /var/etc/xray-simple") { printf "%s%s", sep, $1; sep = " " }'
 }
 
+# 过滤系统日志，获取最近 30 条与 xray 相关的日志信息。
 recent_xray_logs() {
 	logread 2>/dev/null | grep -iE "xray|xray_simple|xray-simple" | tail -30 || true
 }
 
+# 启动服务后延迟 2 秒并检验进程是否成功驻留。如果失败则输出报错详情和最近日志。
 assert_running() {
 	local pids
 
@@ -473,6 +520,7 @@ assert_running() {
 	return 1
 }
 
+# 命令行自定义命令：测试并校验当前生成的运行期 Xray JSON 配置文件格式是否正确。
 test_config() {
 	local xray_bin
 	local output
@@ -498,6 +546,10 @@ test_config() {
 	return 1
 }
 
+# 命令行自定义命令：使用指定的 xray 二进制校验指定的 JSON 配置文件是否正确。
+# 支持在临时目录中加载测试，兼容 new/old xray 命令行校验指令。
+# $1: (可选) xray 可执行文件路径
+# $2: 待校验的 JSON 文件路径
 test_json_file() {
 	local xray_bin="$1"
 	local json_file="$2"
@@ -544,6 +596,10 @@ test_json_file() {
 	return 1
 }
 
+# 诊断函数：查询并打印指定 nftables 链（chain）的具体内容规则。
+# $1: 协议族 (如 inet, ip 等)
+# $2: 表名 (如 fw4, xray_simple)
+# $3: 链名 (如 xray_simple_prerouting)
 show_nft_chain() {
 	local family="$1"
 	local table="$2"
@@ -558,6 +614,9 @@ show_nft_chain() {
 	fi
 }
 
+# 诊断函数：查询并打印整个指定 nftables 表（table）的内容。
+# $1: 协议族
+# $2: 表名
 show_nft_table() {
 	local family="$1"
 	local table="$2"
@@ -571,6 +630,7 @@ show_nft_table() {
 	fi
 }
 
+# 命令行自定义命令：输出详尽的 nftables 规则、策略路由及相关的诊断日志信息。
 nft_status() {
 	local nft_mode
 	nft_mode="$(uci_get nft_mode firewall4)"
@@ -625,6 +685,7 @@ nft_status() {
 	fi
 }
 
+# 命令行自定义命令：输出地缘资源数据文件 (geoip.dat/geosite.dat) 在资源目录下的检测状态。
 geodata_status() {
 	local asset_dir
 	asset_dir="$(uci_get asset_dir /usr/share/xray)"
@@ -641,6 +702,8 @@ geodata_status() {
 	fi
 }
 
+# 命令行自定义命令：切换当前运行的激活配置 Profile，并重载启动服务。
+# $1: 目标 profile section ID
 switch_profile() {
 	local profile="$1"
 	[ -n "$profile" ] || {
@@ -660,6 +723,8 @@ switch_profile() {
 }
 
 
+# 命令行自定义命令：将指定或当前激活 profile 的 JSON 配置格式化打印至标准输出，供前台导出。
+# $1: (可选) profile section ID
 export_profile() {
 	local profile="$1"
 	local json
@@ -673,6 +738,7 @@ export_profile() {
 	printf "%s\n" "$json"
 }
 
+# 命令行自定义命令：立刻启用服务、提交 uci，并且启动或重载服务，最后做健康检验。
 start_now() {
 	uci set "${NAME}.@general[0].enabled=1"
 	uci commit "$NAME"
@@ -685,6 +751,7 @@ start_now() {
 	echo "Xray Simple start requested."
 }
 
+# 命令行自定义命令：立刻禁用服务、保存 uci 配置，并执行停止服务操作清空防火墙。
 stop_now() {
 	uci set "${NAME}.@general[0].enabled=0"
 	uci commit "$NAME"
@@ -692,6 +759,7 @@ stop_now() {
 	echo "Xray Simple stopped and disabled in Xray Simple settings."
 }
 
+# 命令行自定义命令：重新载入运行中的服务。
 restart_now() {
 	uci set "${NAME}.@general[0].enabled=1"
 	uci commit "$NAME"
@@ -713,6 +781,7 @@ extra_command "restart_now" "Enable in UCI and restart"
 extra_command "start_tproxy" "Start TProxy nftables and policy routing only"
 extra_command "stop_tproxy" "Stop TProxy nftables and policy routing only"
 
+# procd 声明的系统配置更改触发器，使系统能在 xray_simple 配置改变时触发相关逻辑。
 service_triggers() {
 	procd_add_reload_trigger "xray_simple"
 }

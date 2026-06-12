@@ -16,7 +16,7 @@ define Package/$(PKG_NAME)
 	SECTION:=Custom
 	CATEGORY:=Extra packages
 	TITLE:=Simple LuCI support for Xray TProxy
-	DEPENDS:=firewall4 +kmod-nft-tproxy +luci-base +xray-core
+	DEPENDS:=firewall4 +ip-full +kmod-nft-tproxy +luci-base +xray-core
 	PKGARCH:=all
 endef
 

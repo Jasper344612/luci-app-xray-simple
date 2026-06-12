@@ -11,6 +11,12 @@ const initScript = '/etc/init.d/xray_simple';
 // explicit file paths; arbitrary upload paths would require broader privileges.
 const importTestPath = '/tmp/xray-simple-import.json';
 
+/**
+ * 校验并解析一个正整数值。如果输入不是正整数，则返回本地化的报错字符串；校验通过则返回 true。
+ * @param {any} value - 待校验的数值或字符串
+ * @param {string} name - 字段名称，用于报错信息格式化
+ * @returns {boolean|string} 校验结果
+ */
 function parsePositiveInteger(value, name) {
     const n = Number(value);
     if (!Number.isInteger(n) || n <= 0) {
@@ -19,6 +25,12 @@ function parsePositiveInteger(value, name) {
     return true;
 }
 
+/**
+ * 校验输入的 IP/CIDR 地址格式是否合法。
+ * @param {string} value - 待校验的 CIDR 字符串
+ * @param {number} family - 地址族类型 (4 代表 IPv4, 6 代表 IPv6)
+ * @returns {boolean|string} 校验通过返回 true，否则返回本地化的报错字符串
+ */
 function validateCidrList(value, family) {
     if (value === '') {
         return true;
@@ -44,6 +56,11 @@ function validateCidrList(value, family) {
     return parts[0].includes(':') || _('Invalid IPv6/CIDR value');
 }
 
+/**
+ * 在前端浏览器中触发一段文本内容的下载（通常用于导出 Xray JSON 配置文件）。
+ * @param {string} filename - 下载保存的文件名
+ * @param {string} text - 待下载的文本内容
+ */
 function downloadText(filename, text) {
     const blob = new Blob([text], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -56,10 +73,21 @@ function downloadText(filename, text) {
     URL.revokeObjectURL(url);
 }
 
+/**
+ * 获取指定 Profile 的显示标签，优先获取用户填写的 name 属性，未填写则回退到 UCI 里的配置名 (即 section ID)。
+ * @param {Object} profile - Profile 配置对象
+ * @returns {string} 显示标签
+ */
 function profileLabel(profile) {
     return profile.name || profile['.name'];
 }
 
+/**
+ * 从 Profile 数组中根据 section 标识符 (sectionId) 查找出对应的 profile 对象。
+ * @param {Array<Object>} profiles - Profile 数组列表
+ * @param {string} sectionId - UCI 的 section ID 标识符
+ * @returns {Object|null} 匹配到的 profile 对象，未找到则返回 null
+ */
 function profileBySection(profiles, sectionId) {
     for (const profile of profiles) {
         if (profile['.name'] === sectionId) {
@@ -69,6 +97,13 @@ function profileBySection(profiles, sectionId) {
     return null;
 }
 
+/**
+ * 确定当前激活或应当使用的 Profile 的 section ID。
+ * 如果先前配置的 sectionId 在有效列表中，则直接返回；否则，若列表非空，回退返回第一个 Profile 的 ID，保证配置编辑器依然可用。
+ * @param {Array<Object>} profiles - Profile 数组列表
+ * @param {string} configuredSection - 配置中记录的 section ID
+ * @returns {string} 实际可用的 profile section ID
+ */
 function currentProfileSection(profiles, configuredSection) {
     // active_profile stores a UCI section id, not the display name. Falling back
     // to the first profile keeps the editor usable after a deleted profile.
@@ -78,19 +113,40 @@ function currentProfileSection(profiles, configuredSection) {
     return profiles.length ? profiles[0]['.name'] : '';
 }
 
+/**
+ * 将文件名进行安全规范化，过滤掉除了字母、数字、点号、短横线、下划线之外的特殊字符。
+ * @param {string} name - 输入的文件名字前缀
+ * @returns {string} 过滤且规范后的 .json 格式文件名
+ */
 function configFilename(name) {
     return 'xray-simple-' + (name || 'current').replace(/[^A-Za-z0-9_.-]/g, '_') + '.json';
 }
 
+/**
+ * 辅助获取页面中指定 DOM ID 元素的当前 value 值。
+ * @param {string} id - DOM 元素 ID
+ * @returns {string} 元素值，如不存在该元素则返回空字符串
+ */
 function elementValue(id) {
     const node = document.getElementById(id);
     return node ? node.value : '';
 }
 
+/**
+ * 生成特定 profile 节在导入时特定属性对应的 DOM 元素唯一 ID。
+ * @param {string} sectionId - UCI 的 section ID
+ * @param {string} field - 导入字段属性名
+ * @returns {string} DOM 元素 ID
+ */
 function importFieldId(sectionId, field) {
     return 'xray-simple-import-' + field + '-' + sectionId;
 }
 
+/**
+ * 解析底层命令执行失败时的错误输出，提取 stdout、stderr 或 message，拼接成可读的详细错误文本。
+ * @param {Object|Error} err - 捕获的错误对象或含有标准输入输出流的 rpcd 错误响应
+ * @returns {string} 格式化后的错误信息文本
+ */
 function commandErrorText(err) {
     const parts = [];
     if (err && err.stdout) {
@@ -105,6 +161,11 @@ function commandErrorText(err) {
     return parts.join('\n').trim();
 }
 
+/**
+ * 弹出模态框提示用户命令执行失败，并显示具体的错误堆栈或标准错误输出。
+ * @param {string} title - 模态框标题
+ * @param {Object|Error} err - 错误对象
+ */
 function showCommandError(title, err) {
     ui.showModal(title, [
         E('pre', { 'style': 'white-space: pre-wrap' }, commandErrorText(err) || _('Xray Simple command failed')),
@@ -114,6 +175,12 @@ function showCommandError(title, err) {
     ]);
 }
 
+/**
+ * 弹出模态框提示用户命令执行完成，并展示输出结果。允许指定在关闭弹窗后是否刷新页面。
+ * @param {string} title - 模态框标题
+ * @param {string} text - 待展示的结果文本内容
+ * @param {boolean} reloadAfterClose - 关闭弹窗后是否执行页面重载刷新
+ */
 function showCommandResult(title, text, reloadAfterClose) {
     // Delay reload until the user closes the modal so short-lived failures and
     // command output remain visible instead of flashing away immediately.
@@ -133,10 +200,20 @@ function showCommandResult(title, text, reloadAfterClose) {
     ]);
 }
 
+/**
+ * 判断在执行完指定的命令行指令后，是否需要重载前端页面。
+ * @param {string} command - 指令名称
+ * @returns {boolean} 如果是起停或重启类的指令则返回 true，否则返回 false
+ */
 function shouldReloadAfter(command) {
     return ['start_now', 'stop_now', 'restart_now', 'start_tproxy', 'stop_tproxy'].includes(command);
 }
 
+/**
+ * 封装调用后端的 init.d 脚本以执行指定的命令行命令，并在执行完成后统一处理成功或失败的弹窗呈现。
+ * @param {string} command - 后端支持的指令名 (如 start_now, stop_now, test_config 等)
+ * @returns {Promise} rpcd 执行结果 Promise 对象
+ */
 function runCommand(command) {
     return fs.exec(initScript, [command]).then(function (res) {
         showCommandResult(_('Xray Simple command completed'), res.stdout || _('Xray Simple command completed'), shouldReloadAfter(command));
@@ -145,6 +222,15 @@ function runCommand(command) {
     });
 }
 
+/**
+ * 在 LuCI Form Section 中创建一个自定义的按钮组（通常对应启动、停止、重载等动作按钮）。
+ * @param {Object} section - LuCI 表单 section 实例对象
+ * @param {string} tab - 当前所属标签页 ID
+ * @param {string} id - 元素唯一识别符
+ * @param {string} label - 标签文本
+ * @param {Array<Object>} buttons - 按钮配置项列表 (含有 label, command, style 属性)
+ * @returns {Object} 创建的 form.DummyValue 选项对象
+ */
 function commandGroup(section, tab, id, label, buttons) {
     const o = section.taboption(tab, form.DummyValue, '_' + id, label);
     o.rawhtml = true;
@@ -163,6 +249,11 @@ function commandGroup(section, tab, id, label, buttons) {
     return o;
 }
 
+/**
+ * 校验一段字符串是否是合法的 JSON 对象（且非 Array、非 null、必须是 JSON 对象结构）。
+ * @param {string} value - 待校验的 JSON 配置文本
+ * @returns {boolean|string} 如果合法返回 true，否则返回具体抛出的错误描述字符串
+ */
 function jsonObjectValidator(value) {
     try {
         const parsed = JSON.parse(value || '{}');
@@ -175,6 +266,11 @@ function jsonObjectValidator(value) {
     }
 }
 
+/**
+ * 解析后端传来的 geodata 检测输出文本。将其解析为一个包含资源路径、geoip 以及 geosite 存在状态的对象。
+ * @param {string} output - 后端命令 geodata_status 的返回文本
+ * @returns {Object} 解析后的状态结果结构体
+ */
 function parseGeodataStatus(output) {
     const status = {
         assetDir: '/usr/share/xray',
@@ -200,6 +296,11 @@ function parseGeodataStatus(output) {
 }
 
 return view.extend({
+    /**
+     * LuCI 视图的生命周期函数：在渲染页面前预先加载所需的后端数据。
+     * 加载的内容包括：UCI 配置、后端 geodata 检测状态、后端服务状态、以及已生成的 nftables 规则文件内容。
+     * @returns {Promise<Array>} 返回包含多个异步任务结果的 Promise
+     */
     load: function () {
         // The view needs both UCI data and live init-script status. Missing
         // runtime files are expected before the service has ever started.
@@ -217,6 +318,12 @@ return view.extend({
         });
     },
 
+    /**
+     * LuCI 视图的生命周期函数：根据 load 阶段返回的数据渲染并生成前端表单 DOM。
+     * 涵盖：系统设置、Xray配置与 profile 管理、进程状态管理等 3 个子标签页及保存时的 Xray 配置语法校验逻辑。
+     * @param {Array} loadResult - 含有 geodata_status, status, nft_rules 结果的数组
+     * @returns {Node} 渲染后的 DOM 树节点
+     */
     render: function (loadResult) {
         const geodataStatus = parseGeodataStatus(loadResult[0].stdout);
         const status = loadResult[1];

@@ -21,7 +21,7 @@ The app intentionally keeps Xray configuration user-owned: you edit and switch f
 Runtime packages:
 
 ```sh
-opkg install luci-base firewall4 kmod-nft-tproxy xray-core
+opkg install luci-base firewall4 ip-full kmod-nft-tproxy xray-core
 ```
 
 If your Xray JSON uses `geoip:` or `geosite:` rules, install geodata too:
