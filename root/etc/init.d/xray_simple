@@ -169,7 +169,9 @@ write_nft() {
 	nft_write_set "bypass_ipv6" "ipv6_addr" "$bypass_ipv6"
 	cat >> "$NFT_FILE" <<-EOF
 	    chain xray_simple_prerouting {
-	        type filter hook prerouting priority mangle +10; policy accept;
+	        # Match the reference TProxy rule timing: run after firewall4/raw
+	        # plumbing and use a standard hook priority instead of an offset.
+	        type filter hook prerouting priority filter; policy accept;
 
 	        meta mark ${outbound_mark_h} return
 	        ip daddr { 127.0.0.0/8, 224.0.0.0/4, 255.255.255.255/32 } return
@@ -243,7 +245,9 @@ write_nft() {
 		cat >> "$NFT_FILE" <<-EOF
 
 	    chain xray_simple_output {
-	        type route hook output priority mangle +10; policy accept;
+	        # type route triggers route re-evaluation after marking router-local
+	        # packets; priority filter matches the reference TProxy script.
+	        type route hook output priority filter; policy accept;
 
 	        meta mark ${outbound_mark_h} return
 	EOF
