@@ -659,48 +659,6 @@ switch_profile() {
 	echo "active profile switched to $(active_profile_label)"
 }
 
-import_profile() {
-	local profile_name="$1"
-	local profile_description="$2"
-	local json_file="${3:-/tmp/xray-simple-import.json}"
-	local profile json output
-
-	case "$json_file" in
-		/tmp/xray-simple-import.json) ;;
-		*)
-			echo "unsupported import path: $json_file"
-			return 1
-			;;
-	esac
-
-	profile_name="$(printf "%s" "$profile_name" | tr '\r\n' '  ')"
-	profile_description="$(printf "%s" "$profile_description" | tr '\r\n' '  ')"
-	[ -n "$profile_name" ] || profile_name="imported"
-
-	# Profiles are created server-side so LuCI's temporary frontend section IDs
-	# cannot desynchronize active_profile from the actual UCI section name.
-	output="$(test_json_file "$json_file" 2>&1)" || {
-		printf "%s\n" "$output"
-		return 1
-	}
-	json="$(cat "$json_file")" || return 1
-
-	profile="$(uci add "$NAME" profile)" || {
-		echo "failed to create profile"
-		return 1
-	}
-	uci set "${NAME}.${profile}.name" "$profile_name"
-	if [ -n "$profile_description" ]; then
-		uci set "${NAME}.${profile}.description" "$profile_description"
-	else
-		uci -q delete "${NAME}.${profile}.description"
-	fi
-	uci set "${NAME}.${profile}.json_config" "$json"
-	uci set "${NAME}.@general[0].active_profile" "$profile"
-	uci commit "$NAME" || return 1
-
-	echo "imported profile: ${profile_name} (${profile})"
-}
 
 export_profile() {
 	local profile="$1"
@@ -747,7 +705,7 @@ extra_command "test_json_file" "Validate a JSON config file"
 extra_command "nft_status" "Show nftables and policy routing status"
 extra_command "geodata_status" "Show Xray geo database status"
 extra_command "switch_profile" "Switch active profile and reload"
-extra_command "import_profile" "Import a validated profile JSON file"
+
 extra_command "export_profile" "Print active or selected profile JSON"
 extra_command "start_now" "Enable in UCI and start"
 extra_command "stop_now" "Stop and disable in UCI"
