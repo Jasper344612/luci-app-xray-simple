@@ -204,20 +204,22 @@ write_nft() {
 	nft_write_set "bypass_ipv6" "ipv6_addr" "$bypass_ipv6"
 	cat >> "$NFT_FILE" <<-EOF
 	    chain xray_simple_prerouting {
-	        type filter hook prerouting priority filter; policy accept;
+	        type filter hook prerouting priority mangle + 10; policy accept;
 
 	        meta mark ${outbound_mark_h} return
 	        ip daddr { 127.0.0.0/8, 224.0.0.0/4, 255.255.255.255 } return
-	        fib daddr type local return
 	EOF
 
 	if [ "$proxy_lan_dns" = "1" ]; then
 		cat >> "$NFT_FILE" <<-EOF
+	        meta l4proto tcp fib daddr type local return
+	        udp dport != 53 fib daddr type local return
 	        meta l4proto tcp ip daddr ${private_ipv4} return
 	        ip daddr ${private_ipv4} udp dport != 53 return
 		EOF
 	else
 		cat >> "$NFT_FILE" <<-EOF
+	        fib daddr type local return
 	        ip daddr ${private_ipv4} return
 		EOF
 	fi
@@ -259,7 +261,7 @@ write_nft() {
 		cat >> "$NFT_FILE" <<-EOF
 
 	    chain xray_simple_output {
-	        type route hook output priority filter; policy accept;
+	        type route hook output priority mangle + 10; policy accept;
 
 	        meta mark ${outbound_mark_h} return
 		EOF
