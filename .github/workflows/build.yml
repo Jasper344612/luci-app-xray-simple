@@ -2,6 +2,9 @@ name: Build OpenWrt Package
 
 on:
   push:
+    branches:
+      - main
+      - save
     tags:
       - "*"
   pull_request:
