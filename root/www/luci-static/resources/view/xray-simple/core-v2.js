@@ -214,6 +214,15 @@ function showCommandResult(title, text, reloadAfterClose) {
 }
 
 /**
+ * 稍后刷新页面，用于等待 LuCI 将 pending changes 写入浏览器端 change cache。
+ */
+function reloadSoon() {
+    window.setTimeout(function () {
+        location.reload();
+    }, 250);
+}
+
+/**
  * 判断指定命令是否应以后台任务提交。防火墙重载和 procd 起停在真实路由器上可能超过 LuCI RPC 默认等待时间。
  * @param {string} command - 指令名称
  * @returns {boolean} 如果是长耗时控制类指令则返回 true，否则返回 false
@@ -420,6 +429,11 @@ return view.extend({
         o.value('direct', _('direct nft load'));
         o.default = 'firewall4';
         o.rmempty = false;
+        o.onchange = function (ev, sectionId, value) {
+            // Some LuCI theme/widget combinations do not mark ListValue changes
+            // as pending reliably. Keep the UCI change cache explicit.
+            uci.set(variant, sectionId, 'nft_mode', value);
+        };
 
         o = s.taboption('system', form.Value, 'tproxy_port', _('TProxy port'));
         o.default = '12345';
@@ -568,6 +582,29 @@ return view.extend({
         ss.rowactions = true;
         ss.sortable = true;
         ss.nodescriptions = true;
+        ss.handleModalSave = function (modalMap, ev) {
+            return modalMap.save(null, true).then(function () {
+                delete this.map.addedSection;
+                ui.hideModal();
+                reloadSoon();
+            }.bind(this)).catch(function (err) {
+                showCommandError(_('Profile save failed'), err);
+            });
+        };
+        ss.handleModalCancel = function (modalMap, ev, isSaving) {
+            if (this.map.addedSection != null && !isSaving) {
+                this.map.data.remove(this.uciconfig || this.map.config, this.map.addedSection);
+            }
+            delete this.map.addedSection;
+            ui.hideModal();
+            return this.map.reset();
+        };
+        ss.handleRemove = function (sectionId, ev) {
+            this.map.data.remove(this.uciconfig || this.map.config, sectionId);
+            return this.map.save(null, true).then(function () {
+                reloadSoon();
+            });
+        };
 
         o = ss.option(form.Value, 'name', _('Profile name'));
         o.rmempty = false;

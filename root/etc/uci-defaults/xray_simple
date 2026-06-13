@@ -17,11 +17,10 @@ uci -q del_list xray_simple.@general[0].bypass_ipv6='::/128'
 # 5. 提交 xray_simple 配置的变更
 uci commit xray_simple
 
-# 6. 将 xray_simple 注册并挂载到系统的 ucitrack 配置，以便在 uci 发生改变时实现对服务的自动状态跟踪与重载触发
+# 6. 不使用 ucitrack 自动 reload。LuCI 保存配置只应写入 UCI；
+#    Xray/TProxy 的慢速起停由页面上的显式按钮走后台命令执行。
 uci -q batch <<-EOF >/dev/null
 	delete ucitrack.@xray_simple[-1]
-	add ucitrack xray_simple
-	set ucitrack.@xray_simple[-1].init=xray_simple
 	commit ucitrack
 EOF
 exit 0

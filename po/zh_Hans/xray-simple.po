@@ -125,6 +125,9 @@ msgstr "配置 JSON"
 msgid "Profile name"
 msgstr "配置名称"
 
+msgid "Profile save failed"
+msgstr "配置保存失败"
+
 msgid "Proxy LAN DNS UDP/53"
 msgstr "代理 LAN DNS UDP/53"
 
