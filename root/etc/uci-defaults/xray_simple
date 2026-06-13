@@ -1,6 +1,6 @@
 #!/bin/sh
 # 1. 确保 xray_simple 默认的单例 general 配置节点存在，若不存在则创建
-uci get xray_simple.@general[-1] >/dev/null 2>&1 || uci add xray_simple general >/dev/null 2>&1
+uci get xray_simple.@general[-1] >/dev/null 2>&1 || uci set xray_simple.general=general
 
 # 2. 确保默认的 xray 资源文件路径 (asset_dir) 已经配置好
 uci get xray_simple.@general[0].asset_dir >/dev/null 2>&1 || uci set xray_simple.@general[0].asset_dir='/usr/share/xray'

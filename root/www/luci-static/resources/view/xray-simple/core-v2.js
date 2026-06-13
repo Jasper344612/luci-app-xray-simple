@@ -703,22 +703,22 @@ return view.extend({
 
         m.save = function () {
             const self = this;
-            return self.reset().then(function () {
-                if (typeof self.write === 'function') {
-                    return self.write();
+            const tasks = [];
+            if (typeof self.write === 'function') {
+                tasks.push(self.write());
+            }
+            for (var i = 0; i < self.children.length; i++) {
+                if (typeof self.children[i].write === 'function') {
+                    tasks.push(self.children[i].write());
                 }
-                const tasks = [];
-                for (var i = 0; i < self.children.length; i++) {
-                    if (typeof self.children[i].write === 'function') {
-                        tasks.push(self.children[i].write());
-                    }
-                }
-                return Promise.all(tasks);
-            }).then(function () {
+            }
+            return Promise.all(tasks).then(function () {
                 const configsToTest = [];
 
                 // 1. Get json_config of general section
-                const mainJson = uci.get(variant, 'general', 'json_config');
+                const generalSection = (uci.sections(variant, 'general') || [])[0];
+                const generalName = generalSection ? generalSection['.name'] : 'general';
+                const mainJson = uci.get(variant, generalName, 'json_config');
                 if (mainJson) {
                     configsToTest.push({ label: _('Active config'), value: mainJson });
                 }
