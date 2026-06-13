@@ -429,12 +429,6 @@ return view.extend({
         o.value('direct', _('direct nft load'));
         o.default = 'firewall4';
         o.rmempty = false;
-        o.onchange = function (ev, sectionId, value) {
-            // Some LuCI theme/widget combinations do not mark ListValue changes
-            // as pending reliably. Keep the UCI change cache explicit.
-            uci.set(variant, sectionId, 'nft_mode', value);
-            return uci.save();
-        };
 
         o = s.taboption('system', form.Value, 'tproxy_port', _('TProxy port'));
         o.default = '12345';
@@ -702,28 +696,8 @@ return view.extend({
         };
 
         m.save = function () {
-            const self = this;
-            const tasks = [];
-            if (typeof self.write === 'function') {
-                tasks.push(self.write());
-            }
-            for (var i = 0; i < self.children.length; i++) {
-                if (typeof self.children[i].write === 'function') {
-                    tasks.push(self.children[i].write());
-                }
-            }
-            return Promise.all(tasks).then(function () {
+            return this.parse().then(function () {
                 const configsToTest = [];
-
-                // 1. Get json_config of general section
-                const generalSection = (uci.sections(variant, 'general') || [])[0];
-                const generalName = generalSection ? generalSection['.name'] : 'general';
-                const mainJson = uci.get(variant, generalName, 'json_config');
-                if (mainJson) {
-                    configsToTest.push({ label: _('Active config'), value: mainJson });
-                }
-
-                // 2. Get json_config of all profile sections
                 const sections = uci.sections(variant, 'profile') || [];
                 sections.forEach(function (s) {
                     const name = s.name || s['.name'];
@@ -733,7 +707,6 @@ return view.extend({
                     }
                 });
 
-                // 3. Chain validation sequentially
                 let chain = Promise.resolve();
                 configsToTest.forEach(function (item) {
                     chain = chain.then(function () {
@@ -743,8 +716,6 @@ return view.extend({
                         }
                         return fs.write(importTestPath, item.value).then(function () {
                             return fs.exec(initScript, ['test_json_file', importTestPath]);
-                        }).then(function () {
-                            // Validation passed, proceed
                         }).catch(function (err) {
                             const detail = commandErrorText(err) || _('Validation failed');
                             return Promise.reject(_('%s test failed:\n\n%s').format(item.label, detail));
@@ -761,9 +732,7 @@ return view.extend({
                     E('div', { 'class': 'right' }, [
                         E('button', {
                             'class': 'btn',
-                            'click': function () {
-                                ui.hideModal();
-                            }
+                            'click': function () { ui.hideModal(); }
                         }, _('Close'))
                     ])
                 ]);
