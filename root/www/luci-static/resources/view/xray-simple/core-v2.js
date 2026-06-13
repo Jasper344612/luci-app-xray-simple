@@ -433,6 +433,7 @@ return view.extend({
             // Some LuCI theme/widget combinations do not mark ListValue changes
             // as pending reliably. Keep the UCI change cache explicit.
             uci.set(variant, sectionId, 'nft_mode', value);
+            return uci.save();
         };
 
         o = s.taboption('system', form.Value, 'tproxy_port', _('TProxy port'));
@@ -584,6 +585,8 @@ return view.extend({
         ss.nodescriptions = true;
         ss.handleModalSave = function (modalMap, ev) {
             return modalMap.save(null, true).then(function () {
+                return uci.save();
+            }).then(function () {
                 delete this.map.addedSection;
                 ui.hideModal();
                 reloadSoon();
@@ -601,7 +604,7 @@ return view.extend({
         };
         ss.handleRemove = function (sectionId, ev) {
             this.map.data.remove(this.uciconfig || this.map.config, sectionId);
-            return this.map.save(null, true).then(function () {
+            return uci.save().then(function () {
                 reloadSoon();
             });
         };
