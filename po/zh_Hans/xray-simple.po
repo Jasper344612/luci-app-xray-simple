@@ -194,6 +194,9 @@ msgstr "Xray Simple"
 msgid "Xray Simple command completed"
 msgstr "Xray Simple 命令已完成"
 
+msgid "Xray Simple command queued"
+msgstr "Xray Simple 命令已提交"
+
 msgid "Xray Simple profile switched"
 msgstr "Xray Simple 配置已切换"
 

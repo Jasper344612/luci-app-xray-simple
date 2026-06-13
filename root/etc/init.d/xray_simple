@@ -12,6 +12,8 @@ NFT_FILE="${RUNDIR}/fw4/01_xray_simple.nft"
 # Keeping only an include here lets runtime-generated rules live under /var.
 FW4_INCLUDE=/usr/share/nftables.d/table-pre/xray_simple.nft
 ROUTE_LOG="${RUNDIR}/route.log"
+ASYNC_STATUS="${RUNDIR}/last_command.status"
+ASYNC_LOG="${RUNDIR}/last_command.log"
 
 # 获取 @general[0] 下的 UCI 配置项值，若未配置则使用默认值
 # $1: 配置选项名称
@@ -768,11 +770,64 @@ restart_now() {
 	echo "Xray Simple restart requested."
 }
 
+# 命令行自定义命令：以后台任务执行可能超过 LuCI RPC 超时时间的控制类操作。
+# $1: 控制命令名；后续参数原样传给该命令。
+run_async() {
+	local command="$1"
+
+	[ -n "$command" ] || {
+		echo "missing async command"
+		return 1
+	}
+	shift
+
+	case "$command" in
+		start_now|stop_now|restart_now|start_tproxy|stop_tproxy|switch_profile) ;;
+		*)
+			echo "unsupported async command: $command"
+			return 1
+		;;
+	esac
+
+	mkdir -p "$RUNDIR" || return 1
+	: >"$ASYNC_LOG"
+	printf "running command=%s\n" "$command" >"$ASYNC_STATUS"
+
+	(
+		local rc
+		case "$command" in
+			start_now) start_now ;;
+			stop_now) stop_now ;;
+			restart_now) restart_now ;;
+			start_tproxy) start_tproxy ;;
+			stop_tproxy) stop_tproxy ;;
+			switch_profile) switch_profile "$1" ;;
+		esac
+		rc="$?"
+		printf "exit=%s command=%s\n" "$rc" "$command" >"$ASYNC_STATUS"
+		exit "$rc"
+	) >>"$ASYNC_LOG" 2>&1 &
+
+	echo "Xray Simple command queued: $command"
+	echo "Close this dialog and refresh after a few seconds to see the final status."
+}
+
+# 命令行自定义命令：查看最近一次后台控制命令的状态和输出。
+async_status() {
+	echo "=== async command status ==="
+	cat "$ASYNC_STATUS" 2>/dev/null || echo "no async command status"
+	echo
+	echo "=== async command log ==="
+	cat "$ASYNC_LOG" 2>/dev/null || echo "no async command log"
+}
+
 extra_command "test_config" "Validate active Xray JSON configuration"
 extra_command "test_json_file" "Validate a JSON config file"
 extra_command "nft_status" "Show nftables and policy routing status"
 extra_command "geodata_status" "Show Xray geo database status"
 extra_command "switch_profile" "Switch active profile and reload"
+extra_command "run_async" "Run a long Xray Simple command in background"
+extra_command "async_status" "Show last async Xray Simple command status"
 
 extra_command "export_profile" "Print active or selected profile JSON"
 extra_command "start_now" "Enable in UCI and start"

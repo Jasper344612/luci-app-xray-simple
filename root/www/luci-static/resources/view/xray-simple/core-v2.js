@@ -170,7 +170,15 @@ function showCommandError(title, err) {
     ui.showModal(title, [
         E('pre', { 'style': 'white-space: pre-wrap' }, commandErrorText(err) || _('Xray Simple command failed')),
         E('div', { 'class': 'right' }, [
-            E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Close command error'))
+            E('button', {
+                'type': 'button',
+                'class': 'btn',
+                'click': function (ev) {
+                    ev.preventDefault();
+                    ui.hideModal();
+                    return false;
+                }
+            }, _('Close command error'))
         ])
     ]);
 }
@@ -188,16 +196,30 @@ function showCommandResult(title, text, reloadAfterClose) {
         E('pre', { 'style': 'white-space: pre-wrap' }, text || _('Xray Simple command completed')),
         E('div', { 'class': 'right' }, [
             E('button', {
+                'type': 'button',
                 'class': 'btn cbi-button cbi-button-apply',
-                'click': function () {
+                'click': function (ev) {
+                    ev.preventDefault();
                     ui.hideModal();
                     if (reloadAfterClose) {
-                        location.reload();
+                        window.setTimeout(function () {
+                            location.reload();
+                        }, 1200);
                     }
+                    return false;
                 }
             }, _('OK'))
         ])
     ]);
+}
+
+/**
+ * 判断指定命令是否应以后台任务提交。防火墙重载和 procd 起停在真实路由器上可能超过 LuCI RPC 默认等待时间。
+ * @param {string} command - 指令名称
+ * @returns {boolean} 如果是长耗时控制类指令则返回 true，否则返回 false
+ */
+function shouldRunAsync(command) {
+    return ['start_now', 'stop_now', 'restart_now', 'start_tproxy', 'stop_tproxy', 'switch_profile'].includes(command);
 }
 
 /**
@@ -206,17 +228,22 @@ function showCommandResult(title, text, reloadAfterClose) {
  * @returns {boolean} 如果是起停或重启类的指令则返回 true，否则返回 false
  */
 function shouldReloadAfter(command) {
-    return ['start_now', 'stop_now', 'restart_now', 'start_tproxy', 'stop_tproxy'].includes(command);
+    return ['start_now', 'stop_now', 'restart_now', 'start_tproxy', 'stop_tproxy', 'switch_profile'].includes(command);
 }
 
 /**
  * 封装调用后端的 init.d 脚本以执行指定的命令行命令，并在执行完成后统一处理成功或失败的弹窗呈现。
  * @param {string} command - 后端支持的指令名 (如 start_now, stop_now, test_config 等)
+ * @param {Array<string>} args - 传递给后端指令的参数
  * @returns {Promise} rpcd 执行结果 Promise 对象
  */
-function runCommand(command) {
-    return fs.exec(initScript, [command]).then(function (res) {
-        showCommandResult(_('Xray Simple command completed'), res.stdout || _('Xray Simple command completed'), shouldReloadAfter(command));
+function runCommand(command, args) {
+    const commandArgs = [command].concat(args || []);
+    const asyncCommand = shouldRunAsync(command);
+    const execArgs = asyncCommand ? ['run_async'].concat(commandArgs) : commandArgs;
+
+    return fs.exec(initScript, execArgs).then(function (res) {
+        showCommandResult(asyncCommand ? _('Xray Simple command queued') : _('Xray Simple command completed'), res.stdout || _('Xray Simple command completed'), shouldReloadAfter(command));
     }).catch(function (err) {
         showCommandError(_('Xray Simple command failed'), err);
     });
@@ -591,11 +618,7 @@ return view.extend({
                         return uci.save().then(function () {
                             return ui.changes.apply();
                         }).then(function () {
-                            return fs.exec(initScript, ['switch_profile', sectionId]);
-                        }).then(function (res) {
-                            showCommandResult(_('Xray Simple profile switched'), res.stdout || _('Xray Simple profile switched'), true);
-                        }).catch(function (err) {
-                            showCommandError(_('Xray Simple command failed'), err);
+                            return runCommand('switch_profile', [sectionId]);
                         });
                     }
                 }, _('Switch & Restart')),
