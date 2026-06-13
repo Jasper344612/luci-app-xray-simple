@@ -490,9 +490,9 @@ status_service() {
 	echo
 	ip rule show | grep -E "fwmark|$(uci_get route_table_v4 100)" || true
 	ip -6 rule show | grep -E "fwmark|$(uci_get route_table_v6 106)" || true
-	if ! ip -6 route show table "$table_v6" 2>/dev/null | grep -Eq '(^|[[:space:]])local[[:space:]]+(default|::/0)'; then
-		echo "warning: IPv6 local route is missing in table ${table_v6}"
-	fi
+	# if ! ip -6 route show table "$table_v6" 2>/dev/null | grep -Eq '(^|[[:space:]])local[[:space:]]+(default|::/0)'; then
+	# 	echo "warning: IPv6 local route is missing in table ${table_v6}"
+	# fi
 }
 
 # 查询当前运行的、由 xray_simple 管理的 Xray 进程 PID 列表。
