@@ -596,14 +596,14 @@ return view.extend({
         };
         ss.handleModalCancel = function (modalMap, ev, isSaving) {
             if (this.map.addedSection != null && !isSaving) {
-                this.map.data.remove(this.uciconfig || this.map.config, this.map.addedSection);
+                uci.remove(variant, this.map.addedSection);
             }
             delete this.map.addedSection;
             ui.hideModal();
             return this.map.reset();
         };
         ss.handleRemove = function (sectionId, ev) {
-            this.map.data.remove(this.uciconfig || this.map.config, sectionId);
+            uci.remove(variant, sectionId);
             return uci.save().then(function () {
                 reloadSoon();
             });
