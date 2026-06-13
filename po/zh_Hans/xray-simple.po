@@ -74,20 +74,8 @@ msgstr "IPv4 路由表"
 msgid "IPv6 route table"
 msgstr "IPv6 路由表"
 
-msgid "Import JSON as profile"
-msgstr "导入 JSON 为配置"
-
-msgid "Import as new profile"
-msgstr "导入为新配置"
-
-msgid "Import profile name"
-msgstr "导入配置名称"
-
 msgid "Important: "
 msgstr "重要："
-
-msgid "Import profile description"
-msgstr "导入配置简介"
 
 msgid "Missing %s in %s. If your JSON uses geoip: or geosite: rules, install geodata packages or download the files and place them in this directory."
 msgstr "缺少 %s，目录：%s。如果你的 JSON 使用 geoip: 或 geosite: 规则，请安装 geodata 软件包，或者下载文件并放到这个目录。"
@@ -239,23 +227,8 @@ msgstr "直接加载 nft"
 msgid "firewall4 include"
 msgstr "firewall4 include"
 
-msgid "Close validation error"
-msgstr "关闭校验错误"
-
-msgid "Close import error"
-msgstr "关闭导入错误"
-
 msgid "Export current JSON"
 msgstr "导出当前 JSON"
-
-msgid "Import profile failed"
-msgstr "导入配置失败"
-
-msgid "Import profile completed"
-msgstr "导入配置完成"
-
-msgid "Xray Simple profile imported"
-msgstr "Xray Simple 配置已导入"
 
 msgid "Xray config validation failed"
 msgstr "Xray 配置校验失败"

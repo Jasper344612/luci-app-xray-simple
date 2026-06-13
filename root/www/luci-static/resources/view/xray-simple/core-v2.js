@@ -484,6 +484,16 @@ return view.extend({
         jsonConfigOpt.rows = 28;
         jsonConfigOpt.wrap = 'off';
         jsonConfigOpt.rmempty = false;
+        jsonConfigOpt.renderWidget = function (sectionId, optionId, value) {
+            const node = form.TextValue.prototype.renderWidget.call(this, sectionId, optionId, value);
+            const textarea = node.querySelector('textarea') || (node.tagName === 'TEXTAREA' ? node : null);
+            if (textarea) {
+                textarea.setAttribute('spellcheck', 'false');
+                textarea.setAttribute('autocorrect', 'off');
+                textarea.setAttribute('autocapitalize', 'off');
+            }
+            return node;
+        };
         jsonConfigOpt.cfgvalue = function (sectionId) {
             const profileId = currentProfileSection(profiles, uci.get(variant, sectionId, 'active_profile') || '');
             const profile = profileBySection(profiles, profileId);
@@ -551,6 +561,16 @@ return view.extend({
         o.rows = 20;
         o.wrap = 'off';
         o.rmempty = false;
+        o.renderWidget = function (sectionId, optionId, value) {
+            const node = form.TextValue.prototype.renderWidget.call(this, sectionId, optionId, value);
+            const textarea = node.querySelector('textarea') || (node.tagName === 'TEXTAREA' ? node : null);
+            if (textarea) {
+                textarea.setAttribute('spellcheck', 'false');
+                textarea.setAttribute('autocorrect', 'off');
+                textarea.setAttribute('autocapitalize', 'off');
+            }
+            return node;
+        };
         o.cfgvalue = function (sectionId) {
             return uci.get(variant, sectionId, 'json_config') || '{}';
         };
@@ -621,8 +641,17 @@ return view.extend({
         m.save = function () {
             const self = this;
             return self.reset().then(function () {
-                self.write();
-
+                if (typeof self.write === 'function') {
+                    return self.write();
+                }
+                const tasks = [];
+                for (var i = 0; i < self.children.length; i++) {
+                    if (typeof self.children[i].write === 'function') {
+                        tasks.push(self.children[i].write());
+                    }
+                }
+                return Promise.all(tasks);
+            }).then(function () {
                 const configsToTest = [];
 
                 // 1. Get json_config of general section
