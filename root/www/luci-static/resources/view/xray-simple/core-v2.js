@@ -377,6 +377,7 @@ return view.extend({
         s.tab('system', _('System Settings'));
         s.tab('config', _('Xray Config'));
         s.tab('process', _('Process Management'));
+        s.tab('logs', _('Logs'));
 
         o = s.taboption('system', form.Flag, 'enabled', _('Enable Xray Simple'));
         o.default = '0';
@@ -693,6 +694,44 @@ return view.extend({
         o.rawhtml = true;
         o.cfgvalue = function () {
             return E('pre', { 'style': 'max-height: 32em; overflow: auto; white-space: pre-wrap' }, generatedNft || _('No generated rules yet'));
+        };
+
+        o = s.taboption('logs', form.DummyValue, '_logs_view', _('Xray runtime logs'));
+        o.rawhtml = true;
+        o.renderWidget = function () {
+            const logPre = E('pre', {
+                'id': 'xray-simple-log-output',
+                'style': 'min-height: 20em; max-height: 45em; overflow: auto; white-space: pre-wrap; word-break: break-all; background: #0d1117; color: #c9d1d9; padding: 1rem; border-radius: 6px; font-size: 0.82em; font-family: monospace; margin: 0'
+            }, _('Loading…'));
+
+            function fetchLogs() {
+                logPre.textContent = _('Loading…');
+                fs.exec(initScript, ['recent_xray_logs']).then(function (res) {
+                    const text = ((res.stdout || '') + (res.stderr || '')).trim();
+                    logPre.textContent = text || _('No recent Xray log entries found.');
+                    logPre.scrollTop = logPre.scrollHeight;
+                }).catch(function (err) {
+                    logPre.textContent = commandErrorText(err) || _('Failed to read logs.');
+                });
+            }
+
+            window.setTimeout(fetchLogs, 0);
+
+            return E('div', {}, [
+                E('div', { 'style': 'margin-bottom: 0.6rem; display: flex; gap: 0.5rem' }, [
+                    E('button', {
+                        'type': 'button',
+                        'class': 'btn cbi-button cbi-button-action',
+                        'click': function (ev) { ev.preventDefault(); fetchLogs(); }
+                    }, _('Refresh')),
+                    E('button', {
+                        'type': 'button',
+                        'class': 'btn cbi-button',
+                        'click': function (ev) { ev.preventDefault(); logPre.textContent = ''; }
+                    }, _('Clear'))
+                ]),
+                logPre
+            ]);
         };
 
         m.save = function () {

@@ -837,6 +837,7 @@ extra_command "stop_now" "Stop and disable in UCI"
 extra_command "restart_now" "Enable in UCI and restart"
 extra_command "start_tproxy" "Start TProxy nftables and policy routing only"
 extra_command "stop_tproxy" "Stop TProxy nftables and policy routing only"
+extra_command "recent_xray_logs" "Show recent Xray log entries"
 
 # procd 声明的系统配置更改触发器，使系统能在 xray_simple 配置改变时触发相关逻辑。
 service_triggers() {
