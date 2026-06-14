@@ -8,14 +8,17 @@ msgstr ""
 msgid "%s must be a positive integer"
 msgstr "%s 必须是正整数"
 
-msgid "Active profile"
-msgstr "当前配置"
+msgid "%s test failed:\n\n%s"
+msgstr "%s 校验失败：\n\n%s"
 
 msgid "All Xray outbounds must set streamSettings.sockopt.mark to the Xray outbound bypass mark, otherwise traffic may loop back into TProxy. Current bypass mark: %s."
 msgstr "所有 Xray 出站都必须将 streamSettings.sockopt.mark 设置为 Xray 出站绕过 mark，否则流量可能回环进入 TProxy。当前绕过 mark：%s。"
 
-msgid "Actions"
-msgstr "操作"
+msgid "Important: "
+msgstr "重要："
+
+msgid "Outbound mark reminder"
+msgstr "出站 mark 提醒"
 
 msgid "Add a profile to import JSON, then use Switch & Restart for one-click switching."
 msgstr "添加配置用于导入 JSON，然后使用切换并重启进行一键切换。"
@@ -32,11 +35,20 @@ msgstr "绕过 IPv6/CIDR"
 msgid "Bypass UIDs"
 msgstr "绕过 UID"
 
-msgid "Description"
-msgstr "简介"
+msgid "Clear"
+msgstr "清空"
+
+msgid "Close"
+msgstr "关闭"
+
+msgid "Close command error"
+msgstr "关闭命令错误"
 
 msgid "Default geodata download directory. Xray Simple sets XRAY_LOCATION_ASSET to this directory when validating and running Xray."
 msgstr "默认 geodata 下载目录。Xray Simple 在校验和运行 Xray 时会将 XRAY_LOCATION_ASSET 设置为此目录。"
+
+msgid "Description"
+msgstr "简介"
 
 msgid "Download sources: "
 msgstr "下载来源："
@@ -46,6 +58,9 @@ msgstr "启用 Xray Simple"
 
 msgid "Export profile"
 msgstr "导出配置"
+
+msgid "Failed to read logs."
+msgstr "读取日志失败。"
 
 msgid "GID must be numeric"
 msgstr "GID 必须是数字"
@@ -59,9 +74,6 @@ msgstr "已在 %s 中找到 Geo 数据库文件。"
 msgid "Geo database required: "
 msgstr "需要 Geo 数据库："
 
-msgid "Generated nftables rules"
-msgstr "生成的 nftables 规则"
-
 msgid "Generated direct nftables rules"
 msgstr "生成的 direct nftables 规则"
 
@@ -73,12 +85,6 @@ msgstr "IPv4 路由表"
 
 msgid "IPv6 route table"
 msgstr "IPv6 路由表"
-
-msgid "Important: "
-msgstr "重要："
-
-msgid "Missing %s in %s. If your JSON uses geoip: or geosite: rules, install geodata packages or download the files and place them in this directory."
-msgstr "缺少 %s，目录：%s。如果你的 JSON 使用 geoip: 或 geosite: 规则，请安装 geodata 软件包，或者下载文件并放到这个目录。"
 
 msgid "Invalid CIDR prefix length"
 msgstr "CIDR 前缀长度无效"
@@ -95,26 +101,32 @@ msgstr "IPv6/CIDR 值无效"
 msgid "LAN interfaces"
 msgstr "LAN 接口"
 
+msgid "Loading…"
+msgstr "加载中…"
+
+msgid "Logs"
+msgstr "日志"
+
 msgid "Minimal Xray TProxy management. Xray JSON remains user-owned; this page only manages process and TProxy plumbing."
 msgstr "最小化的 Xray TProxy 管理。Xray JSON 仍由用户维护；本页面只管理进程和 TProxy 管线。"
 
-msgid "No generated rules yet"
-msgstr "尚未生成规则"
+msgid "Missing %s in %s. If your JSON uses geoip: or geosite: rules, install geodata packages or download the files and place them in this directory."
+msgstr "缺少 %s，目录：%s。如果你的 JSON 使用 geoip: 或 geosite: 规则，请安装 geodata 软件包，或者下载文件并放到这个目录。"
 
 msgid "No description"
 msgstr "无简介"
 
+msgid "No generated rules yet"
+msgstr "尚未生成规则"
+
+msgid "No recent Xray log entries found."
+msgstr "暂无近期 Xray 日志记录。"
+
 msgid "OK"
 msgstr "确定"
 
-msgid "Outbound mark reminder"
-msgstr "出站 mark 提醒"
-
 msgid "Policy routing mark"
 msgstr "策略路由 mark"
-
-msgid "Profile actions"
-msgstr "配置操作"
 
 msgid "Process Management"
 msgstr "进程管理"
@@ -122,11 +134,17 @@ msgstr "进程管理"
 msgid "Profile JSON"
 msgstr "配置 JSON"
 
+msgid "Profile actions"
+msgstr "配置操作"
+
 msgid "Profile name"
 msgstr "配置名称"
 
 msgid "Profile save failed"
 msgstr "配置保存失败"
+
+msgid "Profile: %s"
+msgstr "配置：%s"
 
 msgid "Proxy LAN DNS UDP/53"
 msgstr "代理 LAN DNS UDP/53"
@@ -134,8 +152,11 @@ msgstr "代理 LAN DNS UDP/53"
 msgid "Proxy router-local traffic"
 msgstr "代理路由器本机流量"
 
-msgid "Restart Xray Simple"
-msgstr "重启 Xray Simple"
+msgid "Refresh"
+msgstr "刷新"
+
+msgid "Restart"
+msgstr "重启"
 
 msgid "Rule loading mode"
 msgstr "规则加载模式"
@@ -146,17 +167,11 @@ msgstr "显示 nftables 状态"
 msgid "Start"
 msgstr "启动"
 
-msgid "Start Xray Simple"
-msgstr "启动 Xray Simple"
-
 msgid "Start TProxy"
 msgstr "启动 TProxy"
 
 msgid "Stop"
 msgstr "停止"
-
-msgid "Stop Xray Simple"
-msgstr "停止 Xray Simple"
 
 msgid "Stop TProxy"
 msgstr "停止 TProxy"
@@ -164,14 +179,17 @@ msgstr "停止 TProxy"
 msgid "Switch & Restart"
 msgstr "切换并重启"
 
+msgid "Syntax error in %s: %s"
+msgstr "%s 中存在语法错误：%s"
+
 msgid "System Settings"
 msgstr "系统设置"
 
-msgid "TProxy port"
-msgstr "TProxy 端口"
-
 msgid "TProxy"
 msgstr "TProxy"
+
+msgid "TProxy port"
+msgstr "TProxy 端口"
 
 msgid "Tools"
 msgstr "工具"
@@ -182,14 +200,14 @@ msgstr "UID 必须是数字"
 msgid "Validate Xray config"
 msgstr "校验 Xray 配置"
 
-msgid "Restart"
-msgstr "重启"
+msgid "Validation failed"
+msgstr "校验失败"
 
-msgid "Xray Config"
-msgstr "Xray 配置"
+msgid "Xray"
+msgstr "Xray"
 
-msgid "Xray JSON configuration"
-msgstr "Xray JSON 配置"
+msgid "Xray Configuration Validation Failed"
+msgstr "Xray 配置校验失败"
 
 msgid "Xray Simple"
 msgstr "Xray Simple"
@@ -197,11 +215,11 @@ msgstr "Xray Simple"
 msgid "Xray Simple command completed"
 msgstr "Xray Simple 命令已完成"
 
+msgid "Xray Simple command failed"
+msgstr "Xray Simple 命令失败"
+
 msgid "Xray Simple command queued"
 msgstr "Xray Simple 命令已提交"
-
-msgid "Xray Simple profile switched"
-msgstr "Xray Simple 配置已切换"
 
 msgid "Xray Simple profiles"
 msgstr "Xray Simple 配置列表"
@@ -212,14 +230,11 @@ msgstr "Xray Simple 状态"
 msgid "Xray Simple status unavailable"
 msgstr "Xray Simple 状态不可用"
 
-msgid "Xray binary"
-msgstr "Xray 可执行文件"
-
 msgid "Xray asset directory"
 msgstr "Xray 资源文件目录"
 
-msgid "Xray"
-msgstr "Xray"
+msgid "Xray binary"
+msgstr "Xray 可执行文件"
 
 msgid "Xray config must be a JSON object"
 msgstr "Xray 配置必须是 JSON 对象"
@@ -227,20 +242,12 @@ msgstr "Xray 配置必须是 JSON 对象"
 msgid "Xray outbound bypass mark"
 msgstr "Xray 出站绕过 mark"
 
+msgid "Xray runtime logs"
+msgstr "Xray 运行日志"
+
 msgid "direct nft load"
 msgstr "直接加载 nft"
 
 msgid "firewall4 include"
 msgstr "firewall4 include"
 
-msgid "Export current JSON"
-msgstr "导出当前 JSON"
-
-msgid "Xray config validation failed"
-msgstr "Xray 配置校验失败"
-
-msgid "Close command error"
-msgstr "关闭命令错误"
-
-msgid "Xray Simple command failed"
-msgstr "Xray Simple 命令失败"

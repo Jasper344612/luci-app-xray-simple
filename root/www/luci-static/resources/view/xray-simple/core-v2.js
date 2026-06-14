@@ -74,75 +74,6 @@ function downloadText(filename, text) {
 }
 
 /**
- * 获取指定 Profile 的显示标签，优先获取用户填写的 name 属性，未填写则回退到 UCI 里的配置名 (即 section ID)。
- * @param {Object} profile - Profile 配置对象
- * @returns {string} 显示标签
- */
-function profileLabel(profile) {
-    return profile.name || profile['.name'];
-}
-
-/**
- * 从 Profile 数组中根据 section 标识符 (sectionId) 查找出对应的 profile 对象。
- * @param {Array<Object>} profiles - Profile 数组列表
- * @param {string} sectionId - UCI 的 section ID 标识符
- * @returns {Object|null} 匹配到的 profile 对象，未找到则返回 null
- */
-function profileBySection(profiles, sectionId) {
-    for (const profile of profiles) {
-        if (profile['.name'] === sectionId) {
-            return profile;
-        }
-    }
-    return null;
-}
-
-/**
- * 确定当前激活或应当使用的 Profile 的 section ID。
- * 如果先前配置的 sectionId 在有效列表中，则直接返回；否则，若列表非空，回退返回第一个 Profile 的 ID，保证配置编辑器依然可用。
- * @param {Array<Object>} profiles - Profile 数组列表
- * @param {string} configuredSection - 配置中记录的 section ID
- * @returns {string} 实际可用的 profile section ID
- */
-function currentProfileSection(profiles, configuredSection) {
-    // active_profile stores a UCI section id, not the display name. Falling back
-    // to the first profile keeps the editor usable after a deleted profile.
-    if (profileBySection(profiles, configuredSection)) {
-        return configuredSection;
-    }
-    return profiles.length ? profiles[0]['.name'] : '';
-}
-
-/**
- * 将文件名进行安全规范化，过滤掉除了字母、数字、点号、短横线、下划线之外的特殊字符。
- * @param {string} name - 输入的文件名字前缀
- * @returns {string} 过滤且规范后的 .json 格式文件名
- */
-function configFilename(name) {
-    return 'xray-simple-' + (name || 'current').replace(/[^A-Za-z0-9_.-]/g, '_') + '.json';
-}
-
-/**
- * 辅助获取页面中指定 DOM ID 元素的当前 value 值。
- * @param {string} id - DOM 元素 ID
- * @returns {string} 元素值，如不存在该元素则返回空字符串
- */
-function elementValue(id) {
-    const node = document.getElementById(id);
-    return node ? node.value : '';
-}
-
-/**
- * 生成特定 profile 节在导入时特定属性对应的 DOM 元素唯一 ID。
- * @param {string} sectionId - UCI 的 section ID
- * @param {string} field - 导入字段属性名
- * @returns {string} DOM 元素 ID
- */
-function importFieldId(sectionId, field) {
-    return 'xray-simple-import-' + field + '-' + sectionId;
-}
-
-/**
  * 解析底层命令执行失败时的错误输出，提取 stdout、stderr 或 message，拼接成可读的详细错误文本。
  * @param {Object|Error} err - 捕获的错误对象或含有标准输入输出流的 rpcd 错误响应
  * @returns {string} 格式化后的错误信息文本
@@ -368,14 +299,13 @@ return view.extend({
         const generalConfig = (uci.sections(variant, 'general') || [])[0] || {};
         const nftMode = generalConfig.nft_mode || 'firewall4';
         const m = new form.Map(variant, _('Xray Simple'), _('Minimal Xray TProxy management. Xray JSON remains user-owned; this page only manages process and TProxy plumbing.'));
-        let s, ss, o, activeProfileOpt, jsonConfigOpt;
+        let s, ss, o;
 
         s = m.section(form.TypedSection, 'general');
         s.anonymous = true;
         s.addremove = false;
 
         s.tab('system', _('System Settings'));
-        s.tab('config', _('Xray Config'));
         s.tab('process', _('Process Management'));
         s.tab('logs', _('Logs'));
 
@@ -495,82 +425,6 @@ return view.extend({
             return validateCidrList(value, 6);
         };
 
-        o = s.taboption('config', form.DummyValue, '_outbound_mark_notice', _('Outbound mark reminder'));
-        o.rawhtml = true;
-        o.cfgvalue = function () {
-            const outboundMark = generalConfig.outbound_mark || '255';
-            return E('div', {
-                'class': 'cbi-value-description',
-                'style': 'border-left: 4px solid #f0ad4e; background: rgba(240, 173, 78, 0.12); padding: .75rem 1rem; border-radius: 6px; max-width: 70em'
-            }, [
-                E('strong', {}, _('Important: ')),
-                _('All Xray outbounds must set streamSettings.sockopt.mark to the Xray outbound bypass mark, otherwise traffic may loop back into TProxy. Current bypass mark: %s.').format(outboundMark)
-            ]);
-        };
-
-        activeProfileOpt = s.taboption('config', form.ListValue, 'active_profile', _('Active profile'));
-        for (const profile of profiles) {
-            activeProfileOpt.value(profile['.name'], profileLabel(profile));
-        }
-        activeProfileOpt.rmempty = false;
-        activeProfileOpt.cfgvalue = function (sectionId) {
-            return currentProfileSection(profiles, uci.get(variant, sectionId, 'active_profile') || '');
-        };
-
-        jsonConfigOpt = s.taboption('config', form.TextValue, 'json_config', _('Xray JSON configuration'));
-        jsonConfigOpt.rows = 28;
-        jsonConfigOpt.wrap = 'off';
-        jsonConfigOpt.rmempty = false;
-        jsonConfigOpt.renderWidget = function (sectionId, optionId, value) {
-            const node = form.TextValue.prototype.renderWidget.call(this, sectionId, optionId, value);
-            const textarea = node.querySelector('textarea') || (node.tagName === 'TEXTAREA' ? node : null);
-            if (textarea) {
-                textarea.setAttribute('spellcheck', 'false');
-                textarea.setAttribute('autocorrect', 'off');
-                textarea.setAttribute('autocapitalize', 'off');
-            }
-            return node;
-        };
-        jsonConfigOpt.cfgvalue = function (sectionId) {
-            const profileId = currentProfileSection(profiles, uci.get(variant, sectionId, 'active_profile') || '');
-            const profile = profileBySection(profiles, profileId);
-            if (profile) {
-                return profile.json_config || '{}';
-            }
-            return uci.get(variant, sectionId, 'json_config') || '{}';
-        };
-        jsonConfigOpt.write = function (sectionId, value) {
-            // The JSON editor edits the selected profile, while the surrounding
-            // form still belongs to the singleton general section.
-            const profileId = currentProfileSection(profiles, activeProfileOpt.formvalue(sectionId) || '');
-            if (profileBySection(profiles, profileId)) {
-                uci.set(variant, profileId, 'json_config', value);
-            } else {
-                uci.set(variant, sectionId, 'json_config', value);
-            }
-        };
-        jsonConfigOpt.validate = function (sectionId, value) {
-            return jsonObjectValidator(value);
-        };
-        activeProfileOpt.onchange = function (ev, sectionId, value) {
-            // LuCI does not automatically re-render dependent TextValue fields
-            // on ListValue changes, so update the visible editor in-place.
-            const profile = profileBySection(profiles, value);
-            const editor = document.getElementById(jsonConfigOpt.cbid(sectionId));
-            if (profile && editor) {
-                editor.value = profile.json_config || '{}';
-            }
-        };
-
-        o = s.taboption('config', form.Button, '_export_current', _('Export current JSON'));
-        o.inputstyle = 'action';
-        o.onclick = function (sectionId) {
-            const profileId = currentProfileSection(profiles, activeProfileOpt.formvalue(sectionId) || '');
-            const profile = profileBySection(profiles, profileId);
-            downloadText(configFilename(profile ? profileLabel(profile) : 'current'), jsonConfigOpt.formvalue(sectionId) || '{}');
-        };
-
-
         ss = m.section(form.GridSection, 'profile', _('Xray Simple profiles'), _('Add a profile to import JSON, then use Switch & Restart for one-click switching.'));
         ss.anonymous = true;
         ss.addremove = true;
@@ -617,6 +471,19 @@ return view.extend({
         o = ss.option(form.Value, 'description', _('Description'));
         o.modalonly = true;
         o.rmempty = true;
+
+        o = ss.option(form.DummyValue, '_outbound_mark_notice', _('Outbound mark reminder'));
+        o.modalonly = true;
+        o.rawhtml = true;
+        o.cfgvalue = function () {
+            const outboundMark = generalConfig.outbound_mark || '255';
+            return E('div', {
+                'style': 'border-left: 4px solid #f0ad4e; background: rgba(240, 173, 78, 0.12); padding: .6rem .9rem; border-radius: 6px; margin-bottom: .25rem'
+            }, [
+                E('strong', {}, _('Important: ')),
+                _('All Xray outbounds must set streamSettings.sockopt.mark to the Xray outbound bypass mark, otherwise traffic may loop back into TProxy. Current bypass mark: %s.').format(outboundMark)
+            ]);
+        };
 
         o = ss.option(form.TextValue, 'json_config', _('Profile JSON'));
         o.modalonly = true;
