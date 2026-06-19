@@ -501,9 +501,9 @@ xray_pids() {
 	ps w 2>/dev/null | awk '$5 ~ /(^|\/)xray$/ && index($0, " run ") && index($0, "confdir /var/etc/xray-simple") { printf "%s%s", sep, $1; sep = " " }'
 }
 
-# 过滤系统日志，获取最近 30 条与 xray 相关的日志信息。
+# 过滤系统日志，获取最近 100 条与 xray 相关的日志信息。
 recent_xray_logs() {
-	logread 2>/dev/null | grep -iE "xray|xray_simple|xray-simple" | tail -30 || true
+	logread 2>/dev/null | grep -iE "xray|xray_simple|xray-simple" | tail -100 || true
 }
 
 # 启动服务后延迟 2 秒并检验进程是否成功驻留。如果失败则输出报错详情和最近日志。
