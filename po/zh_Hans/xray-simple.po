@@ -56,6 +56,12 @@ msgstr "下载来源："
 msgid "Enable Xray Simple"
 msgstr "启用 Xray Simple"
 
+msgid "Write Xray output to system log"
+msgstr "将 Xray 输出写入系统日志"
+
+msgid "Send Xray stdout and stderr to the OpenWrt system log. Restart Xray after changing this setting."
+msgstr "将 Xray 的标准输出和错误输出写入 OpenWrt 系统日志。修改此设置后需要重启 Xray。"
+
 msgid "Export profile"
 msgstr "导出配置"
 
@@ -250,4 +256,3 @@ msgstr "直接加载 nft"
 
 msgid "firewall4 include"
 msgstr "firewall4 include"
-

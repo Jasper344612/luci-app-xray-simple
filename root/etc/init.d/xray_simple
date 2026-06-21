@@ -408,8 +408,9 @@ ensure_fw4_include() {
 start_service() {
 	[ "$(uci_get enabled 0)" = "1" ] || return 0
 
-	local xray_bin
+	local xray_bin system_log
 	xray_bin="$(uci_get xray_bin /usr/bin/xray)"
+	system_log="$(uci_get system_log 1)"
 	command -v "$xray_bin" >/dev/null 2>&1 || {
 		echo "xray binary not found: $xray_bin"
 		return 1
@@ -432,8 +433,10 @@ start_service() {
 	procd_set_param respawn 1 1 0
 	procd_set_param command "$xray_bin" run -confdir "$RUNDIR"
 	procd_set_param env XRAY_LOCATION_ASSET="$(uci_get asset_dir /usr/share/xray)"
-	procd_set_param stdout 1
-	procd_set_param stderr 1
+	if [ "$system_log" = "1" ]; then
+		procd_set_param stdout 1
+		procd_set_param stderr 1
+	fi
 	procd_set_param pidfile "$PIDFILE"
 	procd_set_param file /etc/config/xray_simple
 	procd_close_instance
@@ -487,6 +490,7 @@ status_service() {
 	echo "mark: $(uci_get mark 1)"
 	echo "tproxy port: $(uci_get tproxy_port 12345)"
 	echo "asset dir: $(uci_get asset_dir /usr/share/xray)"
+	echo "system log: $(uci_get system_log 1)"
 	echo
 	ip rule show | grep -E "fwmark|$(uci_get route_table_v4 100)" || true
 	ip -6 rule show | grep -E "fwmark|$(uci_get route_table_v6 106)" || true

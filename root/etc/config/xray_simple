@@ -1,5 +1,6 @@
 config general
 	option enabled '0'
+	option system_log '1'
 	option xray_bin '/usr/bin/xray'
 	option asset_dir '/usr/share/xray'
 	option nft_mode 'firewall4'

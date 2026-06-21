@@ -313,6 +313,10 @@ return view.extend({
         o.default = '0';
         o.rmempty = false;
 
+        o = s.taboption('system', form.Flag, 'system_log', _('Write Xray output to system log'), _('Send Xray stdout and stderr to the OpenWrt system log. Restart Xray after changing this setting.'));
+        o.default = '1';
+        o.rmempty = false;
+
         o = s.taboption('system', form.Value, 'xray_bin', _('Xray binary'));
         o.default = '/usr/bin/xray';
         o.rmempty = false;
