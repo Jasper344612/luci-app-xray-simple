@@ -5,8 +5,8 @@ msgstr ""
 "Project-Id-Version: luci-app-xray-simple\n"
 "Language: zh_CN\n"
 
-msgid "%s must be a positive integer"
-msgstr "%s 必须是正整数"
+msgid "%s must be an integer between %s and %s"
+msgstr "%s 必须是 %s 到 %s 之间的整数"
 
 msgid "%s test failed:\n\n%s"
 msgstr "%s 校验失败：\n\n%s"
@@ -104,6 +104,9 @@ msgstr "IPv4/CIDR 值无效"
 msgid "Invalid IPv6/CIDR value"
 msgstr "IPv6/CIDR 值无效"
 
+msgid "Invalid network interface name"
+msgstr "网络接口名称无效"
+
 msgid "LAN interfaces"
 msgstr "LAN 接口"
 
@@ -134,6 +137,15 @@ msgstr "确定"
 msgid "Policy routing mark"
 msgstr "策略路由 mark"
 
+msgid "Policy routing mark and Xray outbound bypass mark must be different."
+msgstr "策略路由 mark 与 Xray 出站绕过 mark 不能相同。"
+
+msgid "UID"
+msgstr "UID"
+
+msgid "GID"
+msgstr "GID"
+
 msgid "Process Management"
 msgstr "进程管理"
 
@@ -148,6 +160,15 @@ msgstr "配置名称"
 
 msgid "Profile save failed"
 msgstr "配置保存失败"
+
+msgid "Profile switch failed"
+msgstr "切换配置失败"
+
+msgid "Profile deletion failed"
+msgstr "删除配置失败"
+
+msgid "At least one Xray profile is required."
+msgstr "至少需要保留一个 Xray 配置。"
 
 msgid "Profile: %s"
 msgstr "配置：%s"
@@ -166,6 +187,9 @@ msgstr "重启"
 
 msgid "Rule loading mode"
 msgstr "规则加载模式"
+
+msgid "Route tables 253, 254, and 255 are reserved"
+msgstr "路由表 253、254 和 255 为系统保留表"
 
 msgid "Show nftables status"
 msgstr "显示 nftables 状态"
@@ -221,11 +245,17 @@ msgstr "Xray Simple"
 msgid "Xray Simple command completed"
 msgstr "Xray Simple 命令已完成"
 
+msgid "Xray Simple command is running"
+msgstr "Xray Simple 命令正在运行"
+
 msgid "Xray Simple command failed"
 msgstr "Xray Simple 命令失败"
 
-msgid "Xray Simple command queued"
-msgstr "Xray Simple 命令已提交"
+msgid "Waiting for the background command to finish…"
+msgstr "正在等待后台命令完成…"
+
+msgid "Command status polling timed out. The command may still be running."
+msgstr "轮询命令状态超时，命令可能仍在运行。"
 
 msgid "Xray Simple profiles"
 msgstr "Xray Simple 配置列表"

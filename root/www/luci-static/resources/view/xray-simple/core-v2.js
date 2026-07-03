@@ -7,6 +7,7 @@
 
 const variant = 'xray_simple';
 const initScript = '/etc/init.d/xray_simple';
+const longRunningCommands = ['start_now', 'stop_now', 'restart_now', 'start_tproxy', 'stop_tproxy', 'switch_profile'];
 // Import validation writes to a fixed temporary file because rpcd ACLs need
 // explicit file paths; arbitrary upload paths would require broader privileges.
 const importTestPath = '/tmp/xray-simple-import.json';
@@ -17,10 +18,10 @@ const importTestPath = '/tmp/xray-simple-import.json';
  * @param {string} name - 字段名称，用于报错信息格式化
  * @returns {boolean|string} 校验结果
  */
-function parsePositiveInteger(value, name) {
+function parseIntegerRange(value, name, min, max) {
     const n = Number(value);
-    if (!Number.isInteger(n) || n <= 0) {
-        return _('%s must be a positive integer').format(name);
+    if (!Number.isInteger(n) || n < min || n > max) {
+        return _('%s must be an integer between %s and %s').format(name, min, max);
     }
     return true;
 }
@@ -50,10 +51,30 @@ function validateCidrList(value, family) {
     }
 
     if (family === 4) {
-        return /^(\d{1,3}\.){3}\d{1,3}$/.test(parts[0]) || _('Invalid IPv4/CIDR value');
+        const octets = parts[0].split('.');
+        return octets.length === 4 && octets.every(function (octet) {
+            return /^\d{1,3}$/.test(octet) && Number(octet) <= 255;
+        }) || _('Invalid IPv4/CIDR value');
     }
 
-    return parts[0].includes(':') || _('Invalid IPv6/CIDR value');
+    try {
+        new URL('http://[' + parts[0] + ']/');
+        return true;
+    } catch (e) {
+        return _('Invalid IPv6/CIDR value');
+    }
+}
+
+function validateInterfaceName(value) {
+    return /^[A-Za-z0-9_.:-]{1,15}$/.test(value || '') || _('Invalid network interface name');
+}
+
+function validateRouteTable(value, name) {
+    const rangeResult = parseIntegerRange(value, name, 1, 4294967295);
+    if (rangeResult !== true) {
+        return rangeResult;
+    }
+    return ![253, 254, 255].includes(Number(value)) || _('Route tables 253, 254, and 255 are reserved');
 }
 
 /**
@@ -97,7 +118,7 @@ function commandErrorText(err) {
  * @param {string} title - 模态框标题
  * @param {Object|Error} err - 错误对象
  */
-function showCommandError(title, err) {
+function showCommandError(title, err, reloadAfterClose) {
     ui.showModal(title, [
         E('pre', { 'style': 'white-space: pre-wrap' }, commandErrorText(err) || _('Xray Simple command failed')),
         E('div', { 'class': 'right' }, [
@@ -107,11 +128,44 @@ function showCommandError(title, err) {
                 'click': function (ev) {
                     ev.preventDefault();
                     ui.hideModal();
+                    if (reloadAfterClose) {
+                        window.setTimeout(function () {
+                            location.reload();
+                        }, 500);
+                    }
                     return false;
                 }
             }, _('Close command error'))
         ])
     ]);
+}
+
+function showCommandPending() {
+    ui.showModal(_('Xray Simple command is running'), [
+        E('p', {}, _('Waiting for the background command to finish…'))
+    ]);
+}
+
+function waitForAsyncCommand(command, attempt) {
+    const currentAttempt = attempt || 0;
+    return fs.exec(initScript, ['async_status']).then(function (res) {
+        const output = ((res.stdout || '') + (res.stderr || '')).trim();
+        const match = output.match(/^exit=(\d+) command=([^\s]+)$/m);
+        if (match && match[2] === command) {
+            return {
+                exitCode: Number(match[1]),
+                output: output
+            };
+        }
+        if (currentAttempt >= 180) {
+            return Promise.reject(_('Command status polling timed out. The command may still be running.'));
+        }
+        return new Promise(function (resolve) {
+            window.setTimeout(resolve, 1000);
+        }).then(function () {
+            return waitForAsyncCommand(command, currentAttempt + 1);
+        });
+    });
 }
 
 /**
@@ -159,7 +213,7 @@ function reloadSoon() {
  * @returns {boolean} 如果是长耗时控制类指令则返回 true，否则返回 false
  */
 function shouldRunAsync(command) {
-    return ['start_now', 'stop_now', 'restart_now', 'start_tproxy', 'stop_tproxy', 'switch_profile'].includes(command);
+    return longRunningCommands.includes(command);
 }
 
 /**
@@ -168,7 +222,7 @@ function shouldRunAsync(command) {
  * @returns {boolean} 如果是起停或重启类的指令则返回 true，否则返回 false
  */
 function shouldReloadAfter(command) {
-    return ['start_now', 'stop_now', 'restart_now', 'start_tproxy', 'stop_tproxy', 'switch_profile'].includes(command);
+    return shouldRunAsync(command);
 }
 
 /**
@@ -183,9 +237,20 @@ function runCommand(command, args) {
     const execArgs = asyncCommand ? ['run_async'].concat(commandArgs) : commandArgs;
 
     return fs.exec(initScript, execArgs).then(function (res) {
-        showCommandResult(asyncCommand ? _('Xray Simple command queued') : _('Xray Simple command completed'), res.stdout || _('Xray Simple command completed'), shouldReloadAfter(command));
+        if (!asyncCommand) {
+            showCommandResult(_('Xray Simple command completed'), res.stdout || _('Xray Simple command completed'), shouldReloadAfter(command));
+            return;
+        }
+
+        showCommandPending();
+        return waitForAsyncCommand(command).then(function (result) {
+            if (result.exitCode !== 0) {
+                return Promise.reject(result.output);
+            }
+            showCommandResult(_('Xray Simple command completed'), result.output, shouldReloadAfter(command));
+        });
     }).catch(function (err) {
-        showCommandError(_('Xray Simple command failed'), err);
+        showCommandError(_('Xray Simple command failed'), err, asyncCommand && shouldReloadAfter(command));
     });
 }
 
@@ -275,12 +340,8 @@ return view.extend({
             return Promise.all([
                 L.resolveDefault(fs.exec(initScript, ['geodata_status']), { stdout: '', stderr: '' }),
                 L.resolveDefault(fs.exec(initScript, ['status']), { stdout: _('Xray Simple status unavailable'), stderr: '' }),
-                L.resolveDefault(fs.read('/var/etc/xray-simple/fw4/01_xray_simple.nft'), '').then(function (fw4Rules) {
-                    if (fw4Rules) {
-                        return fw4Rules;
-                    }
-                    return L.resolveDefault(fs.read('/var/etc/xray-simple/direct_xray_simple.nft'), '');
-                })
+                L.resolveDefault(fs.read('/var/etc/xray-simple/fw4/01_xray_simple.nft'), ''),
+                L.resolveDefault(fs.read('/var/etc/xray-simple/direct_xray_simple.nft'), '')
             ]);
         });
     },
@@ -294,10 +355,9 @@ return view.extend({
     render: function (loadResult) {
         const geodataStatus = parseGeodataStatus(loadResult[0].stdout);
         const status = loadResult[1];
-        const generatedNft = loadResult[2];
-        const profiles = uci.sections(variant, 'profile') || [];
         const generalConfig = (uci.sections(variant, 'general') || [])[0] || {};
         const nftMode = generalConfig.nft_mode || 'firewall4';
+        const generatedNft = nftMode === 'direct' ? loadResult[3] : loadResult[2];
         const m = new form.Map(variant, _('Xray Simple'), _('Minimal Xray TProxy management. Xray JSON remains user-owned; this page only manages process and TProxy plumbing.'));
         let s, ss, o;
 
@@ -374,28 +434,28 @@ return view.extend({
         o.default = '1';
         o.rmempty = false;
         o.validate = function (sectionId, value) {
-            return parsePositiveInteger(value, _('Policy routing mark'));
+            return parseIntegerRange(value, _('Policy routing mark'), 1, 4294967295);
         };
 
         o = s.taboption('system', form.Value, 'outbound_mark', _('Xray outbound bypass mark'));
         o.default = '255';
         o.rmempty = false;
         o.validate = function (sectionId, value) {
-            return parsePositiveInteger(value, _('Xray outbound bypass mark'));
+            return parseIntegerRange(value, _('Xray outbound bypass mark'), 1, 4294967295);
         };
 
         o = s.taboption('system', form.Value, 'route_table_v4', _('IPv4 route table'));
         o.default = '100';
         o.rmempty = false;
         o.validate = function (sectionId, value) {
-            return parsePositiveInteger(value, _('IPv4 route table'));
+            return validateRouteTable(value, _('IPv4 route table'));
         };
 
         o = s.taboption('system', form.Value, 'route_table_v6', _('IPv6 route table'));
         o.default = '106';
         o.rmempty = false;
         o.validate = function (sectionId, value) {
-            return parsePositiveInteger(value, _('IPv6 route table'));
+            return validateRouteTable(value, _('IPv6 route table'));
         };
 
         o = s.taboption('system', form.Flag, 'proxy_lan_dns', _('Proxy LAN DNS UDP/53'));
@@ -408,15 +468,19 @@ return view.extend({
 
         o = s.taboption('system', form.DynamicList, 'lan_ifaces', _('LAN interfaces'));
         o.placeholder = 'br-lan';
+        o.rmempty = false;
+        o.validate = function (sectionId, value) {
+            return validateInterfaceName(value);
+        };
 
         o = s.taboption('system', form.DynamicList, 'bypass_uids', _('Bypass UIDs'));
         o.validate = function (sectionId, value) {
-            return value === '' || /^\d+$/.test(value) || _('UID must be numeric');
+            return value === '' || parseIntegerRange(value, _('UID'), 0, 4294967295);
         };
 
         o = s.taboption('system', form.DynamicList, 'bypass_gids', _('Bypass GIDs'));
         o.validate = function (sectionId, value) {
-            return value === '' || /^\d+$/.test(value) || _('GID must be numeric');
+            return value === '' || parseIntegerRange(value, _('GID'), 0, 4294967295);
         };
 
         o = s.taboption('system', form.DynamicList, 'bypass_ipv4', _('Bypass IPv4/CIDR'));
@@ -456,9 +520,21 @@ return view.extend({
             return this.map.reset();
         };
         ss.handleRemove = function (sectionId, ev) {
+            const remaining = (uci.sections(variant, 'profile') || []).filter(function (profile) {
+                return profile['.name'] !== sectionId;
+            });
+            if (remaining.length === 0) {
+                showCommandError(_('Profile deletion failed'), _('At least one Xray profile is required.'));
+                return Promise.resolve();
+            }
+            if (generalConfig['.name'] && uci.get(variant, generalConfig['.name'], 'active_profile') === sectionId) {
+                uci.set(variant, generalConfig['.name'], 'active_profile', remaining[0]['.name']);
+            }
             uci.remove(variant, sectionId);
             return uci.save().then(function () {
                 reloadSoon();
+            }).catch(function (err) {
+                showCommandError(_('Profile deletion failed'), err);
             });
         };
 
@@ -525,6 +601,8 @@ return view.extend({
                             return ui.changes.apply();
                         }).then(function () {
                             return runCommand('switch_profile', [sectionId]);
+                        }).catch(function (err) {
+                            showCommandError(_('Profile switch failed'), err);
                         });
                     }
                 }, _('Switch & Restart')),
@@ -633,6 +711,11 @@ return view.extend({
 
         m.save = function () {
             return this.parse().then(function () {
+                const currentGeneral = (uci.sections(variant, 'general') || [])[0] || {};
+                if (String(currentGeneral.mark || '1') === String(currentGeneral.outbound_mark || '255')) {
+                    return Promise.reject(_('Policy routing mark and Xray outbound bypass mark must be different.'));
+                }
+
                 const configsToTest = [];
                 const sections = uci.sections(variant, 'profile') || [];
                 sections.forEach(function (s) {

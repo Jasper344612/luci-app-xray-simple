@@ -4,7 +4,7 @@ PKG_NAME:=luci-app-xray-simple
 PKG_VERSION:=0.1.0
 PKG_RELEASE:=1
 
-PKG_LICENSE:=MPLv2
+PKG_LICENSE:=MPL-2.0
 PKG_LICENSE_FILES:=LICENSE
 PKG_MAINTAINER:=saruo
 PKG_BUILD_PARALLEL:=1
@@ -16,7 +16,7 @@ define Package/$(PKG_NAME)
 	SECTION:=Custom
 	CATEGORY:=Extra packages
 	TITLE:=Simple LuCI support for Xray TProxy
-	DEPENDS:=firewall4 +ip-full +kmod-nft-tproxy +luci-base
+	DEPENDS:=+firewall4 +ip-full +kmod-nft-tproxy +luci-base +xray-core
 	PKGARCH:=all
 endef
 
