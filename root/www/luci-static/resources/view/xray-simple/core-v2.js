@@ -470,7 +470,10 @@ return view.extend({
         o.placeholder = 'br-lan';
         o.rmempty = false;
         o.validate = function (sectionId, value) {
-            return validateInterfaceName(value);
+            // DynamicList always renders one empty input for adding the next
+            // item. Validate real entries here and enforce a non-empty list
+            // when the complete form is saved.
+            return value === '' || validateInterfaceName(value);
         };
 
         o = s.taboption('system', form.DynamicList, 'bypass_uids', _('Bypass UIDs'));
@@ -714,6 +717,12 @@ return view.extend({
                 const currentGeneral = (uci.sections(variant, 'general') || [])[0] || {};
                 if (String(currentGeneral.mark || '1') === String(currentGeneral.outbound_mark || '255')) {
                     return Promise.reject(_('Policy routing mark and Xray outbound bypass mark must be different.'));
+                }
+                const lanInterfaces = Array.isArray(currentGeneral.lan_ifaces)
+                    ? currentGeneral.lan_ifaces
+                    : [currentGeneral.lan_ifaces];
+                if (!lanInterfaces.some(function (iface) { return !!iface; })) {
+                    return Promise.reject(_('At least one LAN interface is required.'));
                 }
 
                 const configsToTest = [];

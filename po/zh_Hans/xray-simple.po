@@ -170,6 +170,9 @@ msgstr "删除配置失败"
 msgid "At least one Xray profile is required."
 msgstr "至少需要保留一个 Xray 配置。"
 
+msgid "At least one LAN interface is required."
+msgstr "至少需要配置一个 LAN 接口。"
+
 msgid "Profile: %s"
 msgstr "配置：%s"
 
