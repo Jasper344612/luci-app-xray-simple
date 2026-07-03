@@ -46,7 +46,7 @@ if [ -z "$${IPKG_INSTROOT}" ]; then
 	if [ -f /etc/uci-defaults/xray_simple ]; then
 		( . /etc/uci-defaults/xray_simple ) && rm -f /etc/uci-defaults/xray_simple
 	fi
-	uci -q delete ucitrack.@xray_simple[-1]
+	while uci -q delete ucitrack.@xray_simple[-1]; do :; done
 	uci -q commit ucitrack
 	/etc/init.d/rpcd reload >/dev/null 2>&1 || /etc/init.d/rpcd restart >/dev/null 2>&1 || true
 	# LuCI caches menu/view metadata aggressively; clear it so upgrades load

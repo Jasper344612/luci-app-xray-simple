@@ -843,7 +843,7 @@ extra_command "start_tproxy" "Start TProxy nftables and policy routing only"
 extra_command "stop_tproxy" "Stop TProxy nftables and policy routing only"
 extra_command "recent_xray_logs" "Show recent Xray log entries"
 
-# procd 声明的系统配置更改触发器，使系统能在 xray_simple 配置改变时触发相关逻辑。
-service_triggers() {
-	procd_add_reload_trigger "xray_simple"
-}
+# Configuration changes are applied explicitly through the LuCI process and
+# TProxy controls. A procd reload trigger here would restart Xray and
+# firewall4 during LuCI's apply-confirm transaction, which can disconnect
+# rpcd long enough for the 90-second rollback timeout to expire.

@@ -20,8 +20,6 @@ uci commit xray_simple
 
 # 6. 不使用 ucitrack 自动 reload。LuCI 保存配置只应写入 UCI；
 #    Xray/TProxy 的慢速起停由页面上的显式按钮走后台命令执行。
-uci -q batch <<-EOF >/dev/null
-	delete ucitrack.@xray_simple[-1]
-	commit ucitrack
-EOF
+while uci -q delete ucitrack.@xray_simple[-1]; do :; done
+uci -q commit ucitrack
 exit 0
