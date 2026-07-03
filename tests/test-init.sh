@@ -154,6 +154,10 @@ for _ in $(seq 1 20); do
 	sleep 0.05
 done
 grep -Fq 'exit=0 command=start_now' "$ASYNC_STATUS"
+for _ in $(seq 1 20); do
+	[ ! -e "$ASYNC_LOCK" ] && break
+	sleep 0.05
+done
 test ! -e "$ASYNC_LOCK"
 
 echo 'init script regression tests: OK'
