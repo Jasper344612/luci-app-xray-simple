@@ -89,7 +89,7 @@ xray_env() {
 xray_test_confdir() {
 	local xray_bin="$1"
 	local confdir="$2"
-	local cached_bin mode output first_output first_rc
+	local cached_bin="" mode="" output="" first_output="" first_rc=1
 
 	if [ -s "$XRAY_TEST_MODE" ]; then
 		read -r cached_bin mode <"$XRAY_TEST_MODE"
