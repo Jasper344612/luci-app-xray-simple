@@ -1,18 +1,21 @@
 # luci-app-xray-simple
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 Minimal LuCI application for running Xray with transparent proxy plumbing on OpenWrt / ImmortalWrt.
 
 The app intentionally keeps Xray configuration user-owned: you edit and switch full JSON profiles, while LuCI only manages process control, nftables/firewall4 rules, policy routing, and a few common safety settings.
 
 ## Features
 
-- Three LuCI tabs: system settings, Xray JSON configuration, and process management.
+- Three LuCI tabs: system settings, process management, and runtime logs.
 - Multiple JSON profiles with one-click switch and restart.
 - Import/export profile JSON.
 - Xray config validation using the installed Xray binary.
 - TProxy rule generation for `firewall4` include mode or direct `nft` mode.
 - LAN interface selection, bypass IPv4/IPv6 CIDR lists, bypass UID/GID, policy mark and route table settings.
 - nftables status view with generated rule preview.
+- Optional forwarding of Xray stdout/stderr to the OpenWrt system log.
 - Geo database reminder for `geoip.dat` and `geosite.dat`.
 - Optional Chinese translation package: `luci-app-xray-simple-zh`.
 
@@ -61,6 +64,11 @@ LuCI -> Services -> Xray Simple
 
 The package post-install script reloads `rpcd` and clears LuCI caches so upgrades should be installable over the previous package without uninstalling first.
 
+Saving and applying LuCI settings only commits UCI configuration. It does not
+restart Xray or firewall4. Use **Restart** or the TProxy controls after changing
+runtime settings; this separation prevents LuCI's apply-confirm transaction
+from timing out during a firewall restart.
+
 ## Xray JSON Notes
 
 Every outbound in your Xray JSON must set `streamSettings.sockopt.mark` to the configured **Xray outbound bypass mark**. The default mark is `255`.
@@ -108,6 +116,10 @@ IPv6 ULA is bypassed:
 fc00::/7
 ```
 
+IPv4 link-local, IPv6 link-local, and IPv6 multicast destinations are also
+bypassed. At least one valid LAN interface is required; an empty interface list
+never falls back to intercepting every ingress interface.
+
 When **Proxy LAN DNS UDP/53** is enabled, LAN-side UDP/53 traffic is intercepted before private-range bypass rules. TCP/53 is not intercepted by the DNS-specific rule.
 
 ## Rule Loading Modes
@@ -149,6 +161,7 @@ Use this mode only when you want `xray_simple` to manage its own nft table outsi
 /etc/init.d/xray_simple test_config
 /etc/init.d/xray_simple nft_status
 /etc/init.d/xray_simple geodata_status
+/etc/init.d/xray_simple recent_xray_logs
 ```
 
 Start or stop only the TProxy rules and policy routes:
@@ -165,6 +178,10 @@ Export the active profile JSON:
 ```
 
 ## GitHub Builds
+
+GitHub Actions runs automatically for every push to every branch and tag. It
+also runs for pull requests, and can be started manually with
+`workflow_dispatch` from the Actions page.
 
 The workflow builds packages for:
 
@@ -189,6 +206,7 @@ sh -n root/etc/init.d/xray_simple
 sh -n root/etc/uci-defaults/xray_simple
 jq . root/usr/share/rpcd/acl.d/luci-app-xray-simple.json
 msgfmt --check-format -o /tmp/xray-simple.mo po/zh_Hans/xray-simple.po
+bash tests/test-init.sh
 ```
 
 ## License

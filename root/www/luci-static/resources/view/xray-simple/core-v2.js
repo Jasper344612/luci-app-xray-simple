@@ -7,6 +7,7 @@
 
 const variant = 'xray_simple';
 const initScript = '/etc/init.d/xray_simple';
+const longRunningCommands = ['start_now', 'stop_now', 'restart_now', 'start_tproxy', 'stop_tproxy', 'switch_profile'];
 // Import validation writes to a fixed temporary file because rpcd ACLs need
 // explicit file paths; arbitrary upload paths would require broader privileges.
 const importTestPath = '/tmp/xray-simple-import.json';
@@ -17,10 +18,10 @@ const importTestPath = '/tmp/xray-simple-import.json';
  * @param {string} name - 字段名称，用于报错信息格式化
  * @returns {boolean|string} 校验结果
  */
-function parsePositiveInteger(value, name) {
+function parseIntegerRange(value, name, min, max) {
     const n = Number(value);
-    if (!Number.isInteger(n) || n <= 0) {
-        return _('%s must be a positive integer').format(name);
+    if (!Number.isInteger(n) || n < min || n > max) {
+        return _('%s must be an integer between %s and %s').format(name, min, max);
     }
     return true;
 }
@@ -50,10 +51,30 @@ function validateCidrList(value, family) {
     }
 
     if (family === 4) {
-        return /^(\d{1,3}\.){3}\d{1,3}$/.test(parts[0]) || _('Invalid IPv4/CIDR value');
+        const octets = parts[0].split('.');
+        return octets.length === 4 && octets.every(function (octet) {
+            return /^\d{1,3}$/.test(octet) && Number(octet) <= 255;
+        }) || _('Invalid IPv4/CIDR value');
     }
 
-    return parts[0].includes(':') || _('Invalid IPv6/CIDR value');
+    try {
+        new URL('http://[' + parts[0] + ']/');
+        return true;
+    } catch (e) {
+        return _('Invalid IPv6/CIDR value');
+    }
+}
+
+function validateInterfaceName(value) {
+    return /^[A-Za-z0-9_.:-]{1,15}$/.test(value || '') || _('Invalid network interface name');
+}
+
+function validateRouteTable(value, name) {
+    const rangeResult = parseIntegerRange(value, name, 1, 4294967295);
+    if (rangeResult !== true) {
+        return rangeResult;
+    }
+    return ![253, 254, 255].includes(Number(value)) || _('Route tables 253, 254, and 255 are reserved');
 }
 
 /**
@@ -71,75 +92,6 @@ function downloadText(filename, text) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-}
-
-/**
- * 获取指定 Profile 的显示标签，优先获取用户填写的 name 属性，未填写则回退到 UCI 里的配置名 (即 section ID)。
- * @param {Object} profile - Profile 配置对象
- * @returns {string} 显示标签
- */
-function profileLabel(profile) {
-    return profile.name || profile['.name'];
-}
-
-/**
- * 从 Profile 数组中根据 section 标识符 (sectionId) 查找出对应的 profile 对象。
- * @param {Array<Object>} profiles - Profile 数组列表
- * @param {string} sectionId - UCI 的 section ID 标识符
- * @returns {Object|null} 匹配到的 profile 对象，未找到则返回 null
- */
-function profileBySection(profiles, sectionId) {
-    for (const profile of profiles) {
-        if (profile['.name'] === sectionId) {
-            return profile;
-        }
-    }
-    return null;
-}
-
-/**
- * 确定当前激活或应当使用的 Profile 的 section ID。
- * 如果先前配置的 sectionId 在有效列表中，则直接返回；否则，若列表非空，回退返回第一个 Profile 的 ID，保证配置编辑器依然可用。
- * @param {Array<Object>} profiles - Profile 数组列表
- * @param {string} configuredSection - 配置中记录的 section ID
- * @returns {string} 实际可用的 profile section ID
- */
-function currentProfileSection(profiles, configuredSection) {
-    // active_profile stores a UCI section id, not the display name. Falling back
-    // to the first profile keeps the editor usable after a deleted profile.
-    if (profileBySection(profiles, configuredSection)) {
-        return configuredSection;
-    }
-    return profiles.length ? profiles[0]['.name'] : '';
-}
-
-/**
- * 将文件名进行安全规范化，过滤掉除了字母、数字、点号、短横线、下划线之外的特殊字符。
- * @param {string} name - 输入的文件名字前缀
- * @returns {string} 过滤且规范后的 .json 格式文件名
- */
-function configFilename(name) {
-    return 'xray-simple-' + (name || 'current').replace(/[^A-Za-z0-9_.-]/g, '_') + '.json';
-}
-
-/**
- * 辅助获取页面中指定 DOM ID 元素的当前 value 值。
- * @param {string} id - DOM 元素 ID
- * @returns {string} 元素值，如不存在该元素则返回空字符串
- */
-function elementValue(id) {
-    const node = document.getElementById(id);
-    return node ? node.value : '';
-}
-
-/**
- * 生成特定 profile 节在导入时特定属性对应的 DOM 元素唯一 ID。
- * @param {string} sectionId - UCI 的 section ID
- * @param {string} field - 导入字段属性名
- * @returns {string} DOM 元素 ID
- */
-function importFieldId(sectionId, field) {
-    return 'xray-simple-import-' + field + '-' + sectionId;
 }
 
 /**
@@ -166,7 +118,7 @@ function commandErrorText(err) {
  * @param {string} title - 模态框标题
  * @param {Object|Error} err - 错误对象
  */
-function showCommandError(title, err) {
+function showCommandError(title, err, reloadAfterClose) {
     ui.showModal(title, [
         E('pre', { 'style': 'white-space: pre-wrap' }, commandErrorText(err) || _('Xray Simple command failed')),
         E('div', { 'class': 'right' }, [
@@ -176,11 +128,44 @@ function showCommandError(title, err) {
                 'click': function (ev) {
                     ev.preventDefault();
                     ui.hideModal();
+                    if (reloadAfterClose) {
+                        window.setTimeout(function () {
+                            location.reload();
+                        }, 500);
+                    }
                     return false;
                 }
             }, _('Close command error'))
         ])
     ]);
+}
+
+function showCommandPending() {
+    ui.showModal(_('Xray Simple command is running'), [
+        E('p', {}, _('Waiting for the background command to finish…'))
+    ]);
+}
+
+function waitForAsyncCommand(command, attempt) {
+    const currentAttempt = attempt || 0;
+    return fs.exec(initScript, ['async_status']).then(function (res) {
+        const output = ((res.stdout || '') + (res.stderr || '')).trim();
+        const match = output.match(/^exit=(\d+) command=([^\s]+)$/m);
+        if (match && match[2] === command) {
+            return {
+                exitCode: Number(match[1]),
+                output: output
+            };
+        }
+        if (currentAttempt >= 180) {
+            return Promise.reject(_('Command status polling timed out. The command may still be running.'));
+        }
+        return new Promise(function (resolve) {
+            window.setTimeout(resolve, 1000);
+        }).then(function () {
+            return waitForAsyncCommand(command, currentAttempt + 1);
+        });
+    });
 }
 
 /**
@@ -228,7 +213,7 @@ function reloadSoon() {
  * @returns {boolean} 如果是长耗时控制类指令则返回 true，否则返回 false
  */
 function shouldRunAsync(command) {
-    return ['start_now', 'stop_now', 'restart_now', 'start_tproxy', 'stop_tproxy', 'switch_profile'].includes(command);
+    return longRunningCommands.includes(command);
 }
 
 /**
@@ -237,7 +222,7 @@ function shouldRunAsync(command) {
  * @returns {boolean} 如果是起停或重启类的指令则返回 true，否则返回 false
  */
 function shouldReloadAfter(command) {
-    return ['start_now', 'stop_now', 'restart_now', 'start_tproxy', 'stop_tproxy', 'switch_profile'].includes(command);
+    return shouldRunAsync(command);
 }
 
 /**
@@ -252,9 +237,20 @@ function runCommand(command, args) {
     const execArgs = asyncCommand ? ['run_async'].concat(commandArgs) : commandArgs;
 
     return fs.exec(initScript, execArgs).then(function (res) {
-        showCommandResult(asyncCommand ? _('Xray Simple command queued') : _('Xray Simple command completed'), res.stdout || _('Xray Simple command completed'), shouldReloadAfter(command));
+        if (!asyncCommand) {
+            showCommandResult(_('Xray Simple command completed'), res.stdout || _('Xray Simple command completed'), shouldReloadAfter(command));
+            return;
+        }
+
+        showCommandPending();
+        return waitForAsyncCommand(command).then(function (result) {
+            if (result.exitCode !== 0) {
+                return Promise.reject(result.output);
+            }
+            showCommandResult(_('Xray Simple command completed'), result.output, shouldReloadAfter(command));
+        });
     }).catch(function (err) {
-        showCommandError(_('Xray Simple command failed'), err);
+        showCommandError(_('Xray Simple command failed'), err, asyncCommand && shouldReloadAfter(command));
     });
 }
 
@@ -344,12 +340,8 @@ return view.extend({
             return Promise.all([
                 L.resolveDefault(fs.exec(initScript, ['geodata_status']), { stdout: '', stderr: '' }),
                 L.resolveDefault(fs.exec(initScript, ['status']), { stdout: _('Xray Simple status unavailable'), stderr: '' }),
-                L.resolveDefault(fs.read('/var/etc/xray-simple/fw4/01_xray_simple.nft'), '').then(function (fw4Rules) {
-                    if (fw4Rules) {
-                        return fw4Rules;
-                    }
-                    return L.resolveDefault(fs.read('/var/etc/xray-simple/direct_xray_simple.nft'), '');
-                })
+                L.resolveDefault(fs.read('/var/etc/xray-simple/fw4/01_xray_simple.nft'), ''),
+                L.resolveDefault(fs.read('/var/etc/xray-simple/direct_xray_simple.nft'), '')
             ]);
         });
     },
@@ -363,23 +355,26 @@ return view.extend({
     render: function (loadResult) {
         const geodataStatus = parseGeodataStatus(loadResult[0].stdout);
         const status = loadResult[1];
-        const generatedNft = loadResult[2];
-        const profiles = uci.sections(variant, 'profile') || [];
         const generalConfig = (uci.sections(variant, 'general') || [])[0] || {};
         const nftMode = generalConfig.nft_mode || 'firewall4';
+        const generatedNft = nftMode === 'direct' ? loadResult[3] : loadResult[2];
         const m = new form.Map(variant, _('Xray Simple'), _('Minimal Xray TProxy management. Xray JSON remains user-owned; this page only manages process and TProxy plumbing.'));
-        let s, ss, o, activeProfileOpt, jsonConfigOpt;
+        let s, ss, o;
 
         s = m.section(form.TypedSection, 'general');
         s.anonymous = true;
         s.addremove = false;
 
         s.tab('system', _('System Settings'));
-        s.tab('config', _('Xray Config'));
         s.tab('process', _('Process Management'));
+        s.tab('logs', _('Logs'));
 
         o = s.taboption('system', form.Flag, 'enabled', _('Enable Xray Simple'));
         o.default = '0';
+        o.rmempty = false;
+
+        o = s.taboption('system', form.Flag, 'system_log', _('Write Xray output to system log'), _('Send Xray stdout and stderr to the OpenWrt system log. Restart Xray after changing this setting.'));
+        o.default = '1';
         o.rmempty = false;
 
         o = s.taboption('system', form.Value, 'xray_bin', _('Xray binary'));
@@ -439,28 +434,28 @@ return view.extend({
         o.default = '1';
         o.rmempty = false;
         o.validate = function (sectionId, value) {
-            return parsePositiveInteger(value, _('Policy routing mark'));
+            return parseIntegerRange(value, _('Policy routing mark'), 1, 4294967295);
         };
 
         o = s.taboption('system', form.Value, 'outbound_mark', _('Xray outbound bypass mark'));
         o.default = '255';
         o.rmempty = false;
         o.validate = function (sectionId, value) {
-            return parsePositiveInteger(value, _('Xray outbound bypass mark'));
+            return parseIntegerRange(value, _('Xray outbound bypass mark'), 1, 4294967295);
         };
 
         o = s.taboption('system', form.Value, 'route_table_v4', _('IPv4 route table'));
         o.default = '100';
         o.rmempty = false;
         o.validate = function (sectionId, value) {
-            return parsePositiveInteger(value, _('IPv4 route table'));
+            return validateRouteTable(value, _('IPv4 route table'));
         };
 
         o = s.taboption('system', form.Value, 'route_table_v6', _('IPv6 route table'));
         o.default = '106';
         o.rmempty = false;
         o.validate = function (sectionId, value) {
-            return parsePositiveInteger(value, _('IPv6 route table'));
+            return validateRouteTable(value, _('IPv6 route table'));
         };
 
         o = s.taboption('system', form.Flag, 'proxy_lan_dns', _('Proxy LAN DNS UDP/53'));
@@ -473,15 +468,22 @@ return view.extend({
 
         o = s.taboption('system', form.DynamicList, 'lan_ifaces', _('LAN interfaces'));
         o.placeholder = 'br-lan';
+        o.rmempty = false;
+        o.validate = function (sectionId, value) {
+            // DynamicList always renders one empty input for adding the next
+            // item. Validate real entries here and enforce a non-empty list
+            // when the complete form is saved.
+            return value === '' || validateInterfaceName(value);
+        };
 
         o = s.taboption('system', form.DynamicList, 'bypass_uids', _('Bypass UIDs'));
         o.validate = function (sectionId, value) {
-            return value === '' || /^\d+$/.test(value) || _('UID must be numeric');
+            return value === '' || parseIntegerRange(value, _('UID'), 0, 4294967295);
         };
 
         o = s.taboption('system', form.DynamicList, 'bypass_gids', _('Bypass GIDs'));
         o.validate = function (sectionId, value) {
-            return value === '' || /^\d+$/.test(value) || _('GID must be numeric');
+            return value === '' || parseIntegerRange(value, _('GID'), 0, 4294967295);
         };
 
         o = s.taboption('system', form.DynamicList, 'bypass_ipv4', _('Bypass IPv4/CIDR'));
@@ -493,82 +495,6 @@ return view.extend({
         o.validate = function (sectionId, value) {
             return validateCidrList(value, 6);
         };
-
-        o = s.taboption('config', form.DummyValue, '_outbound_mark_notice', _('Outbound mark reminder'));
-        o.rawhtml = true;
-        o.cfgvalue = function () {
-            const outboundMark = generalConfig.outbound_mark || '255';
-            return E('div', {
-                'class': 'cbi-value-description',
-                'style': 'border-left: 4px solid #f0ad4e; background: rgba(240, 173, 78, 0.12); padding: .75rem 1rem; border-radius: 6px; max-width: 70em'
-            }, [
-                E('strong', {}, _('Important: ')),
-                _('All Xray outbounds must set streamSettings.sockopt.mark to the Xray outbound bypass mark, otherwise traffic may loop back into TProxy. Current bypass mark: %s.').format(outboundMark)
-            ]);
-        };
-
-        activeProfileOpt = s.taboption('config', form.ListValue, 'active_profile', _('Active profile'));
-        for (const profile of profiles) {
-            activeProfileOpt.value(profile['.name'], profileLabel(profile));
-        }
-        activeProfileOpt.rmempty = false;
-        activeProfileOpt.cfgvalue = function (sectionId) {
-            return currentProfileSection(profiles, uci.get(variant, sectionId, 'active_profile') || '');
-        };
-
-        jsonConfigOpt = s.taboption('config', form.TextValue, 'json_config', _('Xray JSON configuration'));
-        jsonConfigOpt.rows = 28;
-        jsonConfigOpt.wrap = 'off';
-        jsonConfigOpt.rmempty = false;
-        jsonConfigOpt.renderWidget = function (sectionId, optionId, value) {
-            const node = form.TextValue.prototype.renderWidget.call(this, sectionId, optionId, value);
-            const textarea = node.querySelector('textarea') || (node.tagName === 'TEXTAREA' ? node : null);
-            if (textarea) {
-                textarea.setAttribute('spellcheck', 'false');
-                textarea.setAttribute('autocorrect', 'off');
-                textarea.setAttribute('autocapitalize', 'off');
-            }
-            return node;
-        };
-        jsonConfigOpt.cfgvalue = function (sectionId) {
-            const profileId = currentProfileSection(profiles, uci.get(variant, sectionId, 'active_profile') || '');
-            const profile = profileBySection(profiles, profileId);
-            if (profile) {
-                return profile.json_config || '{}';
-            }
-            return uci.get(variant, sectionId, 'json_config') || '{}';
-        };
-        jsonConfigOpt.write = function (sectionId, value) {
-            // The JSON editor edits the selected profile, while the surrounding
-            // form still belongs to the singleton general section.
-            const profileId = currentProfileSection(profiles, activeProfileOpt.formvalue(sectionId) || '');
-            if (profileBySection(profiles, profileId)) {
-                uci.set(variant, profileId, 'json_config', value);
-            } else {
-                uci.set(variant, sectionId, 'json_config', value);
-            }
-        };
-        jsonConfigOpt.validate = function (sectionId, value) {
-            return jsonObjectValidator(value);
-        };
-        activeProfileOpt.onchange = function (ev, sectionId, value) {
-            // LuCI does not automatically re-render dependent TextValue fields
-            // on ListValue changes, so update the visible editor in-place.
-            const profile = profileBySection(profiles, value);
-            const editor = document.getElementById(jsonConfigOpt.cbid(sectionId));
-            if (profile && editor) {
-                editor.value = profile.json_config || '{}';
-            }
-        };
-
-        o = s.taboption('config', form.Button, '_export_current', _('Export current JSON'));
-        o.inputstyle = 'action';
-        o.onclick = function (sectionId) {
-            const profileId = currentProfileSection(profiles, activeProfileOpt.formvalue(sectionId) || '');
-            const profile = profileBySection(profiles, profileId);
-            downloadText(configFilename(profile ? profileLabel(profile) : 'current'), jsonConfigOpt.formvalue(sectionId) || '{}');
-        };
-
 
         ss = m.section(form.GridSection, 'profile', _('Xray Simple profiles'), _('Add a profile to import JSON, then use Switch & Restart for one-click switching.'));
         ss.anonymous = true;
@@ -597,9 +523,21 @@ return view.extend({
             return this.map.reset();
         };
         ss.handleRemove = function (sectionId, ev) {
+            const remaining = (uci.sections(variant, 'profile') || []).filter(function (profile) {
+                return profile['.name'] !== sectionId;
+            });
+            if (remaining.length === 0) {
+                showCommandError(_('Profile deletion failed'), _('At least one Xray profile is required.'));
+                return Promise.resolve();
+            }
+            if (generalConfig['.name'] && uci.get(variant, generalConfig['.name'], 'active_profile') === sectionId) {
+                uci.set(variant, generalConfig['.name'], 'active_profile', remaining[0]['.name']);
+            }
             uci.remove(variant, sectionId);
             return uci.save().then(function () {
                 reloadSoon();
+            }).catch(function (err) {
+                showCommandError(_('Profile deletion failed'), err);
             });
         };
 
@@ -616,6 +554,19 @@ return view.extend({
         o = ss.option(form.Value, 'description', _('Description'));
         o.modalonly = true;
         o.rmempty = true;
+
+        o = ss.option(form.DummyValue, '_outbound_mark_notice', _('Outbound mark reminder'));
+        o.modalonly = true;
+        o.rawhtml = true;
+        o.cfgvalue = function () {
+            const outboundMark = generalConfig.outbound_mark || '255';
+            return E('div', {
+                'style': 'border-left: 4px solid #f0ad4e; background: rgba(240, 173, 78, 0.12); padding: .6rem .9rem; border-radius: 6px; margin-bottom: .25rem'
+            }, [
+                E('strong', {}, _('Important: ')),
+                _('All Xray outbounds must set streamSettings.sockopt.mark to the Xray outbound bypass mark, otherwise traffic may loop back into TProxy. Current bypass mark: %s.').format(outboundMark)
+            ]);
+        };
 
         o = ss.option(form.TextValue, 'json_config', _('Profile JSON'));
         o.modalonly = true;
@@ -653,6 +604,8 @@ return view.extend({
                             return ui.changes.apply();
                         }).then(function () {
                             return runCommand('switch_profile', [sectionId]);
+                        }).catch(function (err) {
+                            showCommandError(_('Profile switch failed'), err);
                         });
                     }
                 }, _('Switch & Restart')),
@@ -695,8 +648,83 @@ return view.extend({
             return E('pre', { 'style': 'max-height: 32em; overflow: auto; white-space: pre-wrap' }, generatedNft || _('No generated rules yet'));
         };
 
+        o = s.taboption('logs', form.DummyValue, '_logs_view', _('Xray runtime logs'));
+        o.rawhtml = true;
+        o.renderWidget = function () {
+            let requestSerial = 0;
+            let refreshButton;
+            const logPre = E('pre', {
+                'id': 'xray-simple-log-output',
+                'style': 'min-height: 20em; max-height: 45em; overflow: auto; white-space: pre-wrap; word-break: break-all; background: #0d1117; color: #c9d1d9; padding: 1rem; border-radius: 6px; font-size: 0.82em; font-family: monospace; margin: 0'
+            }, _('Loading…'));
+
+            function fetchLogs() {
+                const serial = ++requestSerial;
+                refreshButton.disabled = true;
+                logPre.textContent = _('Loading…');
+
+                return fs.exec(initScript, ['recent_xray_logs']).then(function (res) {
+                    if (serial !== requestSerial) {
+                        return;
+                    }
+                    const text = ((res.stdout || '') + (res.stderr || '')).trim();
+                    logPre.textContent = text || _('No recent Xray log entries found.');
+                    logPre.scrollTop = logPre.scrollHeight;
+                }).catch(function (err) {
+                    if (serial !== requestSerial) {
+                        return;
+                    }
+                    logPre.textContent = commandErrorText(err) || _('Failed to read logs.');
+                }).then(function () {
+                    if (serial === requestSerial) {
+                        refreshButton.disabled = false;
+                    }
+                });
+            }
+
+            refreshButton = E('button', {
+                'type': 'button',
+                'class': 'btn cbi-button cbi-button-action',
+                'click': function (ev) {
+                    ev.preventDefault();
+                    fetchLogs();
+                }
+            }, _('Refresh'));
+
+            const view = E('div', {}, [
+                E('div', { 'style': 'margin-bottom: 0.6rem; display: flex; gap: 0.5rem' }, [
+                    refreshButton,
+                    E('button', {
+                        'type': 'button',
+                        'class': 'btn cbi-button',
+                        'click': function (ev) {
+                            ev.preventDefault();
+                            requestSerial++;
+                            refreshButton.disabled = false;
+                            logPre.textContent = '';
+                        }
+                    }, _('Clear'))
+                ]),
+                logPre
+            ]);
+
+            window.setTimeout(fetchLogs, 0);
+            return view;
+        };
+
         m.save = function () {
             return this.parse().then(function () {
+                const currentGeneral = (uci.sections(variant, 'general') || [])[0] || {};
+                if (String(currentGeneral.mark || '1') === String(currentGeneral.outbound_mark || '255')) {
+                    return Promise.reject(_('Policy routing mark and Xray outbound bypass mark must be different.'));
+                }
+                const lanInterfaces = Array.isArray(currentGeneral.lan_ifaces)
+                    ? currentGeneral.lan_ifaces
+                    : [currentGeneral.lan_ifaces];
+                if (!lanInterfaces.some(function (iface) { return !!iface; })) {
+                    return Promise.reject(_('At least one LAN interface is required.'));
+                }
+
                 const configsToTest = [];
                 const sections = uci.sections(variant, 'profile') || [];
                 sections.forEach(function (s) {

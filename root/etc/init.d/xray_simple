@@ -6,14 +6,16 @@ USE_PROCD=1
 NAME=xray_simple
 
 RUNDIR=/var/etc/xray-simple
-PIDFILE=/var/run/xray-simple.pid
 NFT_FILE="${RUNDIR}/fw4/01_xray_simple.nft"
 # firewall4 loads files from table-pre before materializing the inet fw4 table.
 # Keeping only an include here lets runtime-generated rules live under /var.
 FW4_INCLUDE=/usr/share/nftables.d/table-pre/xray_simple.nft
 ROUTE_LOG="${RUNDIR}/route.log"
+ROUTE_STATE="${RUNDIR}/route.state"
 ASYNC_STATUS="${RUNDIR}/last_command.status"
 ASYNC_LOG="${RUNDIR}/last_command.log"
+ASYNC_LOCK="${RUNDIR}/command.lock"
+XRAY_TEST_MODE="${RUNDIR}/xray-test-mode"
 
 # 获取 @general[0] 下的 UCI 配置项值，若未配置则使用默认值
 # $1: 配置选项名称
@@ -33,9 +35,10 @@ uci_list() {
 # 获取当前处于激活状态的 profile 标识符。若未指定或失效，则默认回退到第一个有效 profile
 # 返回值: 激活的 profile section ID
 active_profile() {
-	local profile
+	local profile section_type
 	profile="$(uci_get active_profile "")"
-	if [ -n "$profile" ] && uci -q get "${NAME}.${profile}" >/dev/null 2>&1; then
+	section_type="$(uci -q get "${NAME}.${profile}" 2>/dev/null)"
+	if [ -n "$profile" ] && [ "$section_type" = "profile" ]; then
 		echo "$profile"
 		return
 	fi
@@ -80,10 +83,158 @@ xray_env() {
 	XRAY_LOCATION_ASSET="$asset_dir" "$@"
 }
 
+# Run Xray configuration validation using the CLI form supported by the
+# installed binary. Cache the successful form to avoid one failed process
+# launch per profile on older OpenWrt Xray packages.
+xray_test_confdir() {
+	local xray_bin="$1"
+	local confdir="$2"
+	local cached_bin="" mode="" output="" first_output="" first_rc=1
+
+	if [ -s "$XRAY_TEST_MODE" ]; then
+		read -r cached_bin mode <"$XRAY_TEST_MODE"
+	fi
+	if [ "$cached_bin" = "$xray_bin" ]; then
+		case "$mode" in
+			test)
+				if output="$(xray_env "$xray_bin" test -confdir "$confdir" 2>&1)"; then
+					first_rc=0
+				else
+					first_rc="$?"
+				fi
+				printf '%s\n' "$output"
+				return "$first_rc"
+			;;
+			run)
+				if output="$(xray_env "$xray_bin" run -test -confdir "$confdir" 2>&1)"; then
+					first_rc=0
+				else
+					first_rc="$?"
+				fi
+				printf '%s\n' "$output"
+				return "$first_rc"
+			;;
+		esac
+	fi
+
+	for mode in test run; do
+		if [ "$mode" = "test" ]; then
+			if output="$(xray_env "$xray_bin" test -confdir "$confdir" 2>&1)"; then
+				first_rc=0
+			else
+				first_rc="$?"
+			fi
+		else
+			if output="$(xray_env "$xray_bin" run -test -confdir "$confdir" 2>&1)"; then
+				first_rc=0
+			else
+				first_rc="$?"
+			fi
+		fi
+		if [ "$first_rc" = "0" ]; then
+			mkdir -p "$RUNDIR"
+			printf '%s %s\n' "$xray_bin" "$mode" >"$XRAY_TEST_MODE"
+			printf '%s\n' "$output"
+			return 0
+		fi
+		if [ "$mode" = "test" ]; then
+			first_output="$output"
+		fi
+	done
+
+	case "$first_output" in
+		*"unknown command"*|*"unknown subcommand"*|*"Run 'xray help'"*) ;;
+		*) output="$first_output" ;;
+	esac
+	printf '%s\n' "$output"
+	return 1
+}
+
 # 将十进制的策略路由防火墙标记数值转换为 8 位十六进制表示 (例如 1 -> 0x00000001)
 # $1: 十进制标记数值
 mark_hex() {
 	printf "0x%08x" "$1"
+}
+
+valid_uint_range() {
+	local value="$1"
+	local min="$2"
+	local max="$3"
+
+	case "$value" in
+		''|*[!0-9]*) return 1 ;;
+	esac
+	awk -v value="$value" -v min="$min" -v max="$max" 'BEGIN { exit !(value >= min && value <= max) }'
+}
+
+valid_route_table() {
+	valid_uint_range "$1" 1 4294967295 || return 1
+	case "$1" in
+		253|254|255) return 1 ;;
+	esac
+}
+
+validate_settings() {
+	local nft_mode tproxy_port mark outbound_mark table_v4 table_v6 item lan_ifaces
+
+	nft_mode="$(uci_get nft_mode firewall4)"
+	tproxy_port="$(uci_get tproxy_port 12345)"
+	mark="$(uci_get mark 1)"
+	outbound_mark="$(uci_get outbound_mark 255)"
+	table_v4="$(uci_get route_table_v4 100)"
+	table_v6="$(uci_get route_table_v6 106)"
+	lan_ifaces="$(uci_list lan_ifaces)"
+
+	case "$nft_mode" in
+		firewall4|direct) ;;
+		*) echo "invalid nft mode: $nft_mode"; return 1 ;;
+	esac
+	valid_uint_range "$tproxy_port" 1 65535 || {
+		echo "invalid TProxy port: $tproxy_port"
+		return 1
+	}
+	valid_uint_range "$mark" 1 4294967295 || {
+		echo "invalid policy routing mark: $mark"
+		return 1
+	}
+	valid_uint_range "$outbound_mark" 1 4294967295 || {
+		echo "invalid Xray outbound bypass mark: $outbound_mark"
+		return 1
+	}
+	[ "$mark" != "$outbound_mark" ] || {
+		echo "policy routing mark and Xray outbound bypass mark must be different"
+		return 1
+	}
+	valid_route_table "$table_v4" || {
+		echo "invalid IPv4 route table: $table_v4"
+		return 1
+	}
+	valid_route_table "$table_v6" || {
+		echo "invalid IPv6 route table: $table_v6"
+		return 1
+	}
+	[ -n "$lan_ifaces" ] || {
+		echo "at least one LAN interface is required"
+		return 1
+	}
+	for item in $lan_ifaces; do
+		case "$item" in
+			*[!A-Za-z0-9_.:-]*|'')
+				echo "invalid LAN interface name: $item"
+				return 1
+			;;
+		esac
+		[ "${#item}" -le 15 ] || {
+			echo "LAN interface name is too long: $item"
+			return 1
+		}
+	done
+	for item in $(uci_list bypass_uids) $(uci_list bypass_gids); do
+		valid_uint_range "$item" 0 4294967295 || {
+			echo "invalid bypass UID/GID: $item"
+			return 1
+		}
+	done
 }
 
 # 将空格分隔的 IP 列表转换为以逗号分隔的 nftables 集合元素格式
@@ -166,6 +317,7 @@ write_nft() {
 	local bypass_ipv4 bypass_ipv6 nft_mode lan_ifaces bypass_uids bypass_gids wrap_table
 	local lan_match private_ipv4 private_ipv6
 
+	validate_settings || return 1
 	nft_mode="$(uci_get nft_mode firewall4)"
 	if [ "$nft_mode" = "direct" ]; then
 		NFT_FILE="${RUNDIR}/direct_xray_simple.nft"
@@ -188,7 +340,7 @@ write_nft() {
 	lan_ifaces="$(nft_string_set_body "$(uci_list lan_ifaces)")"
 	bypass_uids="$(nft_set_body "$(uci_list bypass_uids)" "")"
 	bypass_gids="$(nft_set_body "$(uci_list bypass_gids)" "")"
-	private_ipv4="{ 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 }"
+	private_ipv4="{ 10.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16 }"
 	private_ipv6="fc00::/7"
 	lan_match=""
 	[ -n "$lan_ifaces" ] && lan_match="iifname { ${lan_ifaces} } "
@@ -226,7 +378,7 @@ write_nft() {
 
 	cat >> "$NFT_FILE" <<-EOF
 	        ip daddr @bypass_ipv4 return
-	        ip6 daddr { ::1/128, fe80::/10 } return
+	        ip6 daddr { ::1/128, fe80::/10, ff00::/8 } return
 	EOF
 
 	if [ "$proxy_lan_dns" = "1" ]; then
@@ -244,16 +396,20 @@ write_nft() {
 	        ip6 daddr @bypass_ipv6 return
 	EOF
 
-	if [ "$proxy_router_output" = "1" ] && [ -n "$lan_ifaces" ]; then
+	if [ "$proxy_router_output" = "1" ]; then
 		cat >> "$NFT_FILE" <<-EOF
 	        meta mark ${mark_h} meta l4proto { tcp, udp } tproxy ip to 127.0.0.1:${tproxy_port} accept
 	        meta mark ${mark_h} meta l4proto { tcp, udp } tproxy ip6 to [::1]:${tproxy_port} accept
 		EOF
 	fi
 
-	cat >> "$NFT_FILE" <<-EOF
+	if [ -n "$lan_match" ]; then
+		cat >> "$NFT_FILE" <<-EOF
 	        ${lan_match}meta l4proto { tcp, udp } meta mark set ${mark_h} tproxy ip to 127.0.0.1:${tproxy_port} accept
 	        ${lan_match}meta l4proto { tcp, udp } meta mark set ${mark_h} tproxy ip6 to [::1]:${tproxy_port} accept
+	EOF
+	fi
+	cat >> "$NFT_FILE" <<-EOF
 	    }
 	EOF
 
@@ -291,7 +447,7 @@ write_nft() {
 		fi
 		cat >> "$NFT_FILE" <<-EOF
 	        ip daddr @bypass_ipv4 return
-	        ip6 daddr { ::1/128, fe80::/10 } return
+	        ip6 daddr { ::1/128, fe80::/10, ff00::/8 } return
 		EOF
 		if [ "$proxy_lan_dns" = "1" ]; then
 			cat >> "$NFT_FILE" <<-EOF
@@ -331,26 +487,55 @@ setup_routes() {
 	# those marked destinations as local so Xray's transparent socket receives
 	# them on loopback. IPv6 intentionally uses ::/0, matching the reference
 	# TProxy scripts and avoiding ambiguous "default" syntax on some systems.
-	ip rule add fwmark "$mark" table "$table_v4" 2>>"$ROUTE_LOG"
-	ip route add local 0.0.0.0/0 dev lo table "$table_v4" 2>>"$ROUTE_LOG"
-	ip -6 rule add fwmark "$mark" table "$table_v6" 2>>"$ROUTE_LOG"
-	ip -6 route add local ::/0 dev lo table "$table_v6" 2>>"$ROUTE_LOG"
+	ip rule add fwmark "$mark" table "$table_v4" 2>>"$ROUTE_LOG" || return 1
+	ip route add local 0.0.0.0/0 dev lo table "$table_v4" 2>>"$ROUTE_LOG" || {
+		flush_route_tuple "$mark" "$table_v4" "$table_v6"
+		return 1
+	}
+	if ! ip -6 rule add fwmark "$mark" table "$table_v6" 2>>"$ROUTE_LOG" ||
+	   ! ip -6 route add local ::/0 dev lo table "$table_v6" 2>>"$ROUTE_LOG"; then
+		# Keep IPv4 usable on builds or networks where IPv6 is unavailable.
+		while ip -6 rule del fwmark "$mark" table "$table_v6" 2>/dev/null; do :; done
+		ip -6 route del local ::/0 dev lo table "$table_v6" 2>/dev/null
+		echo "warning: failed to configure IPv6 policy routing" >>"$ROUTE_LOG"
+	fi
+	printf '%s %s %s\n' "$mark" "$table_v4" "$table_v6" >"$ROUTE_STATE"
 }
 
-# 清理所有由 setup_routes 配置的 ipv4 和 ipv6 策略路由及本地路由规则。
-flush_routes() {
-	local mark table_v4 table_v6
-	mark="$(uci_get mark 1)"
-	table_v4="$(uci_get route_table_v4 100)"
-	table_v6="$(uci_get route_table_v6 106)"
-
+# 清理一组由 setup_routes 配置的 IPv4/IPv6 策略路由。
+flush_route_tuple() {
+	local mark="$1"
+	local table_v4="$2"
+	local table_v6="$3"
 	while ip rule del fwmark "$mark" table "$table_v4" 2>/dev/null; do :; done
 	ip route del local 0.0.0.0/0 dev lo table "$table_v4" 2>/dev/null
 	while ip -6 rule del fwmark "$mark" table "$table_v6" 2>/dev/null; do :; done
 	ip -6 route del local ::/0 dev lo table "$table_v6" 2>/dev/null
 }
 
+# 清理当前配置以及上次实际加载配置对应的策略路由，避免修改 mark/表号后留下旧规则。
+flush_routes() {
+	local mark table_v4 table_v6 old_mark old_table_v4 old_table_v6
+	mark="$(uci_get mark 1)"
+	table_v4="$(uci_get route_table_v4 100)"
+	table_v6="$(uci_get route_table_v6 106)"
+
+	if [ -s "$ROUTE_STATE" ]; then
+		read -r old_mark old_table_v4 old_table_v6 <"$ROUTE_STATE"
+		if [ -n "$old_mark" ] && [ -n "$old_table_v4" ] && [ -n "$old_table_v6" ]; then
+			flush_route_tuple "$old_mark" "$old_table_v4" "$old_table_v6"
+		fi
+	fi
+	flush_route_tuple "$mark" "$table_v4" "$table_v6"
+	rm -f "$ROUTE_STATE"
+}
+
 # 加载并应用 nftables 防火墙规则。根据 nft_mode 在 direct 模式直接加载，或在 firewall4 模式通过引用静态包含钩子并重启 firewall 生效。
+fw4_rules_loaded() {
+	nft list chain inet fw4 xray_simple_prerouting >/dev/null 2>&1 ||
+	nft list chain inet fw4 xray_simple_output >/dev/null 2>&1
+}
+
 load_firewall() {
 	local nft_mode
 	local output
@@ -360,8 +545,17 @@ load_firewall() {
 		# Mode switching must clean the other mode first. Otherwise stale fw4
 		# chains/direct tables keep intercepting traffic after the UI mode changes.
 		rm -f "${RUNDIR}"/fw4/*.nft
-		/etc/init.d/firewall restart >/dev/null 2>&1
+		if fw4_rules_loaded; then
+			output="$(/etc/init.d/firewall restart 2>&1)" || {
+				printf "%s\n" "$output"
+				return 1
+			}
+		fi
 		nft delete table inet xray_simple 2>/dev/null
+		output="$(nft -c -f "$NFT_FILE" 2>&1)" || {
+			printf "%s\n" "$output"
+			return 1
+		}
 		output="$(nft -f "$NFT_FILE" 2>&1)"
 		if [ "$?" != "0" ]; then
 			printf "%s\n" "$output"
@@ -383,18 +577,22 @@ load_firewall() {
 
 # 卸载并清除 xray_simple 生成的全部 nftables 防火墙规则及相关文件，并重启系统防火墙服务。
 flush_firewall() {
+	local had_fw4=0
+	fw4_rules_loaded && had_fw4=1
 	nft delete table inet xray_simple 2>/dev/null
 	rm -f "${RUNDIR}/direct_xray_simple.nft"
 	rm -f "${RUNDIR}"/fw4/*.nft
-	/etc/init.d/firewall restart
+	[ "$had_fw4" = "0" ] || /etc/init.d/firewall restart
 }
 
 # 防火墙加载失败时的回滚函数。静默清理临时配置并重启防火墙，防止配置残留。
 rollback_firewall() {
+	local had_fw4=0
+	fw4_rules_loaded && had_fw4=1
 	nft delete table inet xray_simple 2>/dev/null
 	rm -f "${RUNDIR}/direct_xray_simple.nft"
 	rm -f "${RUNDIR}"/fw4/*.nft
-	/etc/init.d/firewall restart >/dev/null 2>&1
+	[ "$had_fw4" = "0" ] || /etc/init.d/firewall restart >/dev/null 2>&1
 }
 
 # 确保 firewall4 的静态包含钩子文件存在，并配置为引入 `/var/etc/xray-simple/fw4/` 下的所有 nft 规则文件。
@@ -408,8 +606,9 @@ ensure_fw4_include() {
 start_service() {
 	[ "$(uci_get enabled 0)" = "1" ] || return 0
 
-	local xray_bin
+	local xray_bin system_log
 	xray_bin="$(uci_get xray_bin /usr/bin/xray)"
+	system_log="$(uci_get system_log 1)"
 	command -v "$xray_bin" >/dev/null 2>&1 || {
 		echo "xray binary not found: $xray_bin"
 		return 1
@@ -417,9 +616,14 @@ start_service() {
 
 	modprobe nft_tproxy 2>/dev/null
 	write_config
-	test_json_file "$xray_bin" "${RUNDIR}/config.json" || return 1
-	write_nft
-	setup_routes
+	if [ "${XRAY_CONFIG_VALIDATED:-0}" != "1" ]; then
+		test_json_file "$xray_bin" "${RUNDIR}/config.json" || return 1
+	fi
+	write_nft || return 1
+	setup_routes || {
+		flush_routes
+		return 1
+	}
 	load_firewall || {
 		# If nft/fw4 loading fails, remove any half-applied plumbing before
 		# procd gets a chance to start Xray behind broken routing rules.
@@ -429,18 +633,20 @@ start_service() {
 	}
 
 	procd_open_instance
-	procd_set_param respawn 1 1 0
+	procd_set_param respawn
 	procd_set_param command "$xray_bin" run -confdir "$RUNDIR"
 	procd_set_param env XRAY_LOCATION_ASSET="$(uci_get asset_dir /usr/share/xray)"
-	procd_set_param stdout 1
-	procd_set_param stderr 1
-	procd_set_param pidfile "$PIDFILE"
+	if [ "$system_log" = "1" ]; then
+		procd_set_param stdout 1
+		procd_set_param stderr 1
+	fi
 	procd_set_param file /etc/config/xray_simple
 	procd_close_instance
 }
 
 # procd 停止服务回调入口。清理生成的防火墙规则并释放策略路由。
 stop_service() {
+	[ "${RELOAD_KEEP_TPROXY:-0}" = "1" ] && return 0
 	flush_firewall
 	flush_routes
 }
@@ -448,8 +654,11 @@ stop_service() {
 # 命令行自定义命令：单独开启 TProxy 防火墙劫持规则和策略路由（不启动 Xray 进程本身）。
 start_tproxy() {
 	modprobe nft_tproxy 2>/dev/null
-	write_nft
-	setup_routes
+	write_nft || return 1
+	setup_routes || {
+		flush_routes
+		return 1
+	}
 	load_firewall || {
 		rollback_firewall
 		flush_routes
@@ -465,10 +674,24 @@ stop_tproxy() {
 	echo "Xray Simple TProxy rules stopped."
 }
 
-# 重载服务。先停止服务，再启动服务。
+# 重载服务。先校验新配置，停止进程时保留旧 TProxy，启动阶段只重载一次防火墙。
 reload_service() {
+	local rc
+	test_config || return 1
+	export RELOAD_KEEP_TPROXY=1
 	stop
+	rc="$?"
+	unset RELOAD_KEEP_TPROXY
+	[ "$rc" = "0" ] || return "$rc"
+	export XRAY_CONFIG_VALIDATED=1
 	start
+	rc="$?"
+	unset XRAY_CONFIG_VALIDATED
+	[ "$rc" = "0" ] || {
+		flush_firewall
+		flush_routes
+		return 1
+	}
 }
 
 # 输出当前服务的运行状态。包括进程运行状态 PID、配置模式、路由标记、各地址族策略路由配置，以及 IPv6 路由缺失校验。
@@ -487,6 +710,7 @@ status_service() {
 	echo "mark: $(uci_get mark 1)"
 	echo "tproxy port: $(uci_get tproxy_port 12345)"
 	echo "asset dir: $(uci_get asset_dir /usr/share/xray)"
+	echo "system log: $(uci_get system_log 1)"
 	echo
 	ip rule show | grep -E "fwmark|$(uci_get route_table_v4 100)" || true
 	ip -6 rule show | grep -E "fwmark|$(uci_get route_table_v6 106)" || true
@@ -498,12 +722,14 @@ status_service() {
 # 查询当前运行的、由 xray_simple 管理的 Xray 进程 PID 列表。
 # 返回值: 空格分隔的 PID 字符串
 xray_pids() {
-	ps w 2>/dev/null | awk '$5 ~ /(^|\/)xray$/ && index($0, " run ") && index($0, "confdir /var/etc/xray-simple") { printf "%s%s", sep, $1; sep = " " }'
+	local xray_bin
+	xray_bin="$(uci_get xray_bin /usr/bin/xray)"
+	ps w 2>/dev/null | awk -v xray_bin="$xray_bin" '$5 == xray_bin && index($0, " run ") && index($0, "confdir /var/etc/xray-simple") { printf "%s%s", sep, $1; sep = " " }'
 }
 
-# 过滤系统日志，获取最近 30 条与 xray 相关的日志信息。
+# 过滤系统日志，获取最近 100 条与 xray 相关的日志信息。
 recent_xray_logs() {
-	logread 2>/dev/null | grep -iE "xray|xray_simple|xray-simple" | tail -30 || true
+	logread 2>/dev/null | grep -iE "xray|xray_simple|xray-simple" | tail -100 || true
 }
 
 # 启动服务后延迟 2 秒并检验进程是否成功驻留。如果失败则输出报错详情和最近日志。
@@ -527,27 +753,13 @@ assert_running() {
 # 命令行自定义命令：测试并校验当前生成的运行期 Xray JSON 配置文件格式是否正确。
 test_config() {
 	local xray_bin
-	local output
 	xray_bin="$(uci_get xray_bin /usr/bin/xray)"
 	command -v "$xray_bin" >/dev/null 2>&1 || {
 		echo "xray binary not found: $xray_bin"
 		return 1
 	}
 	write_config
-	output="$(xray_env "$xray_bin" test -confdir "$RUNDIR" 2>&1)"
-	if [ "$?" = "0" ]; then
-		printf "%s\n" "$output"
-		return 0
-	fi
-
-	output="$(xray_env "$xray_bin" run -test -confdir "$RUNDIR" 2>&1)"
-	if [ "$?" = "0" ]; then
-		printf "%s\n" "$output"
-		return 0
-	fi
-
-	printf "%s\n" "$output"
-	return 1
+	xray_test_confdir "$xray_bin" "$RUNDIR"
 }
 
 # 命令行自定义命令：使用指定的 xray 二进制校验指定的 JSON 配置文件是否正确。
@@ -578,17 +790,9 @@ test_json_file() {
 		rm -rf "$test_dir"
 		return 1
 	}
+	[ "$json_file" != "/tmp/xray-simple-import.json" ] || rm -f "$json_file"
 
-	# Newer Xray builds support "test"; OpenWrt builds have historically varied,
-	# so keep the older "run -test" fallback for package compatibility.
-	output="$(xray_env "$xray_bin" test -confdir "$test_dir" 2>&1)"
-	if [ "$?" = "0" ]; then
-		rm -rf "$test_dir"
-		printf "%s\n" "$output"
-		return 0
-	fi
-
-	output="$(xray_env "$xray_bin" run -test -confdir "$test_dir" 2>&1)"
+	output="$(xray_test_confdir "$xray_bin" "$test_dir" 2>&1)"
 	if [ "$?" = "0" ]; then
 		rm -rf "$test_dir"
 		printf "%s\n" "$output"
@@ -710,11 +914,13 @@ geodata_status() {
 # $1: 目标 profile section ID
 switch_profile() {
 	local profile="$1"
+	local section_type
 	[ -n "$profile" ] || {
 		echo "missing profile section id"
 		return 1
 	}
-	uci -q get "${NAME}.${profile}" >/dev/null || {
+	section_type="$(uci -q get "${NAME}.${profile}" 2>/dev/null)"
+	[ "$section_type" = "profile" ] || {
 		echo "profile not found: $profile"
 		return 1
 	}
@@ -776,6 +982,7 @@ restart_now() {
 # $1: 控制命令名；后续参数原样传给该命令。
 run_async() {
 	local command="$1"
+	local lock_pid target
 
 	[ -n "$command" ] || {
 		echo "missing async command"
@@ -792,23 +999,38 @@ run_async() {
 	esac
 
 	mkdir -p "$RUNDIR" || return 1
+	if [ -s "${ASYNC_LOCK}/pid" ]; then
+		lock_pid="$(cat "${ASYNC_LOCK}/pid" 2>/dev/null)"
+		if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+			echo "another Xray Simple command is still running"
+			return 1
+		fi
+	fi
+	rm -rf "$ASYNC_LOCK"
+	mkdir "$ASYNC_LOCK" || {
+		echo "another Xray Simple command is still running"
+		return 1
+	}
+	target="${1:-}"
 	: >"$ASYNC_LOG"
 	printf "running command=%s\n" "$command" >"$ASYNC_STATUS"
 
 	(
 		local rc
+		trap 'rm -rf "$ASYNC_LOCK"' EXIT INT TERM
 		case "$command" in
 			start_now) start_now ;;
 			stop_now) stop_now ;;
 			restart_now) restart_now ;;
 			start_tproxy) start_tproxy ;;
 			stop_tproxy) stop_tproxy ;;
-			switch_profile) switch_profile "$1" ;;
+			switch_profile) switch_profile "$target" ;;
 		esac
 		rc="$?"
 		printf "exit=%s command=%s\n" "$rc" "$command" >"$ASYNC_STATUS"
 		exit "$rc"
 	) >>"$ASYNC_LOG" 2>&1 &
+	printf '%s\n' "$!" >"${ASYNC_LOCK}/pid"
 
 	echo "Xray Simple command queued: $command"
 	echo "Close this dialog and refresh after a few seconds to see the final status."
@@ -837,8 +1059,9 @@ extra_command "stop_now" "Stop and disable in UCI"
 extra_command "restart_now" "Enable in UCI and restart"
 extra_command "start_tproxy" "Start TProxy nftables and policy routing only"
 extra_command "stop_tproxy" "Stop TProxy nftables and policy routing only"
+extra_command "recent_xray_logs" "Show recent Xray log entries"
 
-# procd 声明的系统配置更改触发器，使系统能在 xray_simple 配置改变时触发相关逻辑。
-service_triggers() {
-	procd_add_reload_trigger "xray_simple"
-}
+# Configuration changes are applied explicitly through the LuCI process and
+# TProxy controls. A procd reload trigger here would restart Xray and
+# firewall4 during LuCI's apply-confirm transaction, which can disconnect
+# rpcd long enough for the 90-second rollback timeout to expire.

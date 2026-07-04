@@ -4,6 +4,8 @@ uci get xray_simple.@general[-1] >/dev/null 2>&1 || uci set xray_simple.general=
 
 # 2. 确保默认的 xray 资源文件路径 (asset_dir) 已经配置好
 uci get xray_simple.@general[0].asset_dir >/dev/null 2>&1 || uci set xray_simple.@general[0].asset_dir='/usr/share/xray'
+uci get xray_simple.@general[0].system_log >/dev/null 2>&1 || uci set xray_simple.@general[0].system_log='1'
+uci -q get xray_simple.@general[0].lan_ifaces >/dev/null 2>&1 || uci add_list xray_simple.@general[0].lan_ifaces='br-lan'
 
 # 3. 清理已废弃的旧版本临时导入字段，避免残留脏配置
 uci -q delete xray_simple.@general[0].import_profile_name
@@ -19,8 +21,6 @@ uci commit xray_simple
 
 # 6. 不使用 ucitrack 自动 reload。LuCI 保存配置只应写入 UCI；
 #    Xray/TProxy 的慢速起停由页面上的显式按钮走后台命令执行。
-uci -q batch <<-EOF >/dev/null
-	delete ucitrack.@xray_simple[-1]
-	commit ucitrack
-EOF
+while uci -q delete ucitrack.@xray_simple[-1]; do :; done
+uci -q commit ucitrack
 exit 0
