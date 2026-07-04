@@ -61,6 +61,14 @@ jobs:
             openwrt_version: 23.05.5
             sdk_url_path: https://downloads.openwrt.org/releases/23.05.5/targets/armsr/armv8
             sdk_name: -sdk-23.05.5-armsr-armv8_
+          - arch: x86_64
+            openwrt_version: 25.12.5
+            sdk_url_path: https://downloads.openwrt.org/releases/25.12.5/targets/x86/64
+            sdk_name: -sdk-25.12.5-x86-64_
+          - arch: armv8a
+            openwrt_version: 25.12.5
+            sdk_url_path: https://downloads.openwrt.org/releases/25.12.5/targets/armsr/armv8
+            sdk_name: -sdk-25.12.5-armsr-armv8_
 
     env:
       SDK_URL_PATH: ${{ matrix.sdk_url_path }}
@@ -161,14 +169,14 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/artifacts"
           find "$SDK_HOME/bin" -type f \( -name "${PACKAGE_NAME}*.ipk" -o -name "${PACKAGE_NAME}*.apk" \) | while read -r file; do
             base="$(basename "$file")"
-            cp "$file" "$GITHUB_WORKSPACE/artifacts/${base%.*}-${{ matrix.arch }}.${base##*.}"
+            cp "$file" "$GITHUB_WORKSPACE/artifacts/${base%.*}-openwrt-${{ matrix.openwrt_version }}-${{ matrix.arch }}.${base##*.}"
           done
           find "$GITHUB_WORKSPACE/artifacts" -type f -exec ls -lh {} \;
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.PACKAGE_NAME }}-${{ matrix.arch }}
+          name: ${{ env.PACKAGE_NAME }}-openwrt-${{ matrix.openwrt_version }}-${{ matrix.arch }}
           path: artifacts/*
           if-no-files-found: error
 

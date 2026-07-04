@@ -21,8 +21,18 @@
 
 ## 运行依赖
 
+安装 OpenWrt 提供的运行依赖：
+
 ```sh
-opkg install luci-base firewall4 ip-full kmod-nft-tproxy xray-core
+opkg install luci-base firewall4 ip-full kmod-nft-tproxy
+```
+
+本软件包不再依赖 Xray Core，因为 Xray Core 更新频繁。请自行安装所需版本，或将具有执行权限的 Xray 二进制文件放到 **系统设置 -> Xray 程序路径** 指定的位置。默认路径为 `/usr/bin/xray`。
+
+OpenWrt 25.12 使用 `apk`，其运行依赖安装命令为：
+
+```sh
+apk add luci-base firewall4 ip-full kmod-nft-tproxy
 ```
 
 如果 Xray JSON 使用了 `geoip:` 或 `geosite:` 规则，还需要安装 Geo 数据库：
@@ -42,11 +52,19 @@ opkg install v2ray-geoip v2ray-geosite
 opkg install ./luci-app-xray-simple_*.ipk
 ```
 
+OpenWrt 25.12 使用：
+
+```sh
+apk add --allow-untrusted ./luci-app-xray-simple-*.apk
+```
+
 安装中文语言包：
 
 ```sh
 opkg install ./luci-app-xray-simple-zh_*.ipk
 ```
+
+OpenWrt 25.12 请安装对应的 `luci-app-xray-simple-zh-*.apk` 构建产物。
 
 安装后打开 **LuCI -> 服务 -> Xray Simple**。安装脚本会重载 `rpcd` 并清理 LuCI 缓存。
 
@@ -144,10 +162,12 @@ table inet xray_simple
 
 所有分支和标签的每次 push 都会自动运行 GitHub Actions。Pull Request 也会触发构建，还可以在 Actions 页面通过 `workflow_dispatch` 手动运行。
 
-工作流构建以下架构的软件包：
+工作流使用 OpenWrt 23.05.5 和 25.12.5 SDK 构建以下架构的软件包：
 
 - `x86_64`
 - `armv8a`
+
+OpenWrt 23.05 构建产物为 `.ipk`，OpenWrt 25.12 构建产物为 `.apk`。产物名称包含 OpenWrt 版本和架构，多个 SDK 生成的文件不会相互覆盖。
 
 每次 push 都使用 GitHub run number 更新 `PKG_RELEASE`，因此较新提交生成的软件包可以直接覆盖升级。构建产物可从 [GitHub Actions](https://github.com/Jasper344612/luci-app-xray-simple/actions) 下载。
 

@@ -21,10 +21,21 @@ The app intentionally keeps Xray configuration user-owned: you edit and switch f
 
 ## Requirements
 
-Runtime packages:
+Install the runtime packages provided by OpenWrt:
 
 ```sh
-opkg install luci-base firewall4 ip-full kmod-nft-tproxy xray-core
+opkg install luci-base firewall4 ip-full kmod-nft-tproxy
+```
+
+Xray is intentionally not a package dependency because Xray Core releases
+frequently. Install the version you need yourself, or place an executable Xray
+binary at the path configured under **System Settings -> Xray binary**. The
+default path is `/usr/bin/xray`.
+
+OpenWrt 25.12 uses `apk`; install its runtime packages with:
+
+```sh
+apk add luci-base firewall4 ip-full kmod-nft-tproxy
 ```
 
 If your Xray JSON uses `geoip:` or `geosite:` rules, install geodata too:
@@ -50,11 +61,20 @@ Install or upgrade the generated package directly:
 opkg install ./luci-app-xray-simple_*.ipk
 ```
 
+On OpenWrt 25.12:
+
+```sh
+apk add --allow-untrusted ./luci-app-xray-simple-*.apk
+```
+
 For Chinese UI strings:
 
 ```sh
 opkg install ./luci-app-xray-simple-zh_*.ipk
 ```
+
+Use the corresponding `luci-app-xray-simple-zh-*.apk` artifact on OpenWrt
+25.12.
 
 After installation, open:
 
@@ -183,10 +203,14 @@ GitHub Actions runs automatically for every push to every branch and tag. It
 also runs for pull requests, and can be started manually with
 `workflow_dispatch` from the Actions page.
 
-The workflow builds packages for:
+The workflow builds packages for OpenWrt 23.05.5 and 25.12.5 on:
 
 - `x86_64`
 - `armv8a`
+
+OpenWrt 23.05 artifacts use `.ipk`; OpenWrt 25.12 artifacts use `.apk`.
+Artifact names include both the OpenWrt version and architecture so builds from
+different SDKs can be downloaded together without filename collisions.
 
 Each push stamps `PKG_RELEASE` with the GitHub run number so artifacts from newer commits can be installed as upgrades.
 
