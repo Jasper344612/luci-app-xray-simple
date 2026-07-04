@@ -2,11 +2,11 @@ name: Build OpenWrt Package
 
 on:
   push:
-    branches:
-      - main
-      - logs
-    tags:
-      - "*"
+    # branches:
+    #   - main
+    #   - logs
+    # tags:
+    #   - "*"
   pull_request:
   workflow_dispatch:
 
