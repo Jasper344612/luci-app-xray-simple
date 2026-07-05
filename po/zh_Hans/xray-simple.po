@@ -176,8 +176,74 @@ msgstr "至少需要配置一个 LAN 接口。"
 msgid "Profile: %s"
 msgstr "配置：%s"
 
-msgid "Proxy LAN DNS UDP/53"
-msgstr "代理 LAN DNS UDP/53"
+msgid "Proxy LAN DNS UDP/53 directly through TProxy"
+msgstr "通过 TProxy 直接代理 LAN DNS UDP/53"
+
+msgid "Use dnsmasq as Xray DNS frontend"
+msgstr "使用 dnsmasq 作为 Xray DNS 前端"
+
+msgid "dnsmasq upstream"
+msgstr "dnsmasq 上游"
+
+msgid "Configure"
+msgstr "配置"
+
+msgid "Active"
+msgstr "已激活"
+
+msgid "Inactive"
+msgstr "未激活"
+
+msgid "Disabled"
+msgstr "已禁用"
+
+msgid "Navigation"
+msgstr "导航"
+
+msgid "Back to Xray Simple"
+msgstr "返回 Xray Simple"
+
+msgid "Activation status"
+msgstr "激活状态"
+
+msgid "Enable dnsmasq upstream"
+msgstr "启用 dnsmasq 上游"
+
+msgid "Use dnsmasq as the LAN DNS frontend and forward its queries to a local Xray DNS inbound."
+msgstr "使用 dnsmasq 作为 LAN DNS 前端，并将查询转发到本地 Xray DNS 入站。"
+
+msgid "Redirect LAN UDP/53 to dnsmasq and use the local Xray DNS inbound as upstream. Restart Xray after changing this setting."
+msgstr "将 LAN UDP/53 重定向到 dnsmasq，并使用本地 Xray DNS 入站作为上游。修改此设置后请重启 Xray。"
+
+msgid "Runtime behavior"
+msgstr "运行行为"
+
+msgid "Xray Simple keeps /etc/config/dhcp unchanged. It installs a temporary dnsmasq fragment only while Xray is running and removes it when Xray stops or fails to start."
+msgstr "Xray Simple 不会修改 /etc/config/dhcp。仅在 Xray 运行时安装临时 dnsmasq 配置片段，并在 Xray 停止或启动失败时将其删除。"
+
+msgid "dnsmasq status unavailable"
+msgstr "dnsmasq 状态不可用"
+
+msgid "Required Xray JSON configuration"
+msgstr "所需的 Xray JSON 配置"
+
+msgid "Merge the following inbound, routing rule, and outbound into the active Xray JSON yourself. The configured Xray DNS inbound port must match this inbound, and the existing top-level dns configuration must define the required upstream servers."
+msgstr "请自行将以下入站、路由规则和出站合并到当前 Xray JSON。配置的 Xray DNS 入站端口必须与此入站一致，并且现有的顶层 dns 配置必须定义所需的上游服务器。"
+
+msgid "Redirect LAN UDP/53 to dnsmasq and use the local Xray DNS inbound as upstream. Enabling this option automatically disables direct LAN DNS UDP/53 TProxy. Restart Xray after changing this setting."
+msgstr "将 LAN UDP/53 重定向到 dnsmasq，并使用本地 Xray DNS 入站作为上游。启用此选项会自动关闭通过 TProxy 直接代理 LAN DNS UDP/53。修改后请重启 Xray。"
+
+msgid "Redirect LAN UDP/53 to dnsmasq and use the local Xray DNS inbound as the only upstream. Xray Simple restores the original dnsmasq upstream when Xray stops."
+msgstr "将 LAN UDP/53 重定向到 dnsmasq，并使用本地 Xray DNS 入站作为上游。Xray 停止时，Xray Simple 会恢复 dnsmasq 原有的上游。"
+
+msgid "Xray DNS inbound port"
+msgstr "Xray DNS 入站端口"
+
+msgid "The active Xray JSON must provide a DNS inbound listening on 127.0.0.1 at this port. Port 53 is reserved for dnsmasq."
+msgstr "当前 Xray JSON 必须提供一个在 127.0.0.1 此端口监听的 DNS 入站。端口 53 保留给 dnsmasq。"
+
+msgid "Port 53 is reserved for dnsmasq"
+msgstr "端口 53 保留给 dnsmasq"
 
 msgid "Proxy router-local traffic"
 msgstr "代理路由器本机流量"

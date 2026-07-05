@@ -33,7 +33,7 @@ jobs:
         run: |
           sh -n root/etc/init.d/xray_simple
           sh -n root/etc/uci-defaults/xray_simple
-          node --check root/www/luci-static/resources/view/xray-simple/core-v2.js
+          find root/www/luci-static/resources/view/xray-simple -name '*.js' -exec node --check {} \;
 
       - name: Check package metadata and translations
         run: |

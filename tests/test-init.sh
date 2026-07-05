@@ -17,11 +17,17 @@ ASYNC_STATUS="$RUNDIR/last_command.status"
 ASYNC_LOG="$RUNDIR/last_command.log"
 ASYNC_LOCK="$RUNDIR/command.lock"
 XRAY_TEST_MODE="$RUNDIR/xray-test-mode"
+DNSMASQ_STATE="$RUNDIR/dnsmasq-fragments"
+DNSMASQ_CONFIG_GLOB="$RUNDIR/generated-dnsmasq.conf.*"
+DNSMASQ_RUNTIME_GLOB="$RUNDIR/dnsmasq*.d"
+DNSMASQ_INIT=/usr/bin/true
 
 cfg_mode=direct
 cfg_lan=br-lan
 cfg_mark=1
 cfg_outbound_mark=255
+cfg_dnsmasq=0
+cfg_dnsmasq_port=5353
 
 uci_get() {
 	case "$1" in
@@ -32,6 +38,8 @@ uci_get() {
 		route_table_v4) echo 100 ;;
 		route_table_v6) echo 106 ;;
 		proxy_lan_dns) echo 1 ;;
+		dnsmasq_upstream) echo "$cfg_dnsmasq" ;;
+		dnsmasq_xray_port) echo "$cfg_dnsmasq_port" ;;
 		proxy_router_output) echo 1 ;;
 		*) echo "${2:-}" ;;
 	esac
@@ -57,6 +65,37 @@ if grep -Fq 'tcp dport != 53' "$direct_rules"; then
 	echo 'TCP/53 must not receive the DNS-specific exception' >&2
 	exit 1
 fi
+
+cfg_dnsmasq=1
+write_nft
+grep -Fq 'chain xray_simple_dns_prerouting' "$direct_rules"
+grep -Fq 'iifname { "br-lan" } udp dport 53 redirect to :53' "$direct_rules"
+if grep -Fq 'udp dport != 53' "$direct_rules"; then
+	echo 'dnsmasq mode unexpectedly retained direct UDP/53 TProxy rules' >&2
+	exit 1
+fi
+
+dnsmasq_dir="$RUNDIR/dnsmasq.test.d"
+mkdir -p "$dnsmasq_dir"
+printf 'conf-dir=%s\n' "$dnsmasq_dir" >"$RUNDIR/generated-dnsmasq.conf.test"
+setup_dnsmasq_upstream
+grep -Fq 'no-resolv' "$dnsmasq_dir/$DNSMASQ_FRAGMENT"
+grep -Fq 'server=127.0.0.1#5353' "$dnsmasq_dir/$DNSMASQ_FRAGMENT"
+xray_pids() { echo 12345; }
+dnsmasq_status >"$RUNDIR/dnsmasq-status-active.out"
+grep -Fq 'status: active' "$RUNDIR/dnsmasq-status-active.out"
+restore_dnsmasq_upstream
+test ! -e "$dnsmasq_dir/$DNSMASQ_FRAGMENT"
+dnsmasq_status >"$RUNDIR/dnsmasq-status-inactive.out"
+grep -Fq 'status: inactive' "$RUNDIR/dnsmasq-status-inactive.out"
+cfg_dnsmasq_port=53
+if validate_settings >"$RUNDIR/dnsmasq-port.out" 2>&1; then
+	echo 'dnsmasq port conflict validation unexpectedly succeeded' >&2
+	exit 1
+fi
+grep -Fq 'conflicts with dnsmasq' "$RUNDIR/dnsmasq-port.out"
+cfg_dnsmasq_port=5353
+cfg_dnsmasq=0
 
 cfg_mode=firewall4
 write_nft

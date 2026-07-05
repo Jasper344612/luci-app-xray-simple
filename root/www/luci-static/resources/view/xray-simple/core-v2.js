@@ -341,7 +341,8 @@ return view.extend({
                 L.resolveDefault(fs.exec(initScript, ['geodata_status']), { stdout: '', stderr: '' }),
                 L.resolveDefault(fs.exec(initScript, ['status']), { stdout: _('Xray Simple status unavailable'), stderr: '' }),
                 L.resolveDefault(fs.read('/var/etc/xray-simple/fw4/01_xray_simple.nft'), ''),
-                L.resolveDefault(fs.read('/var/etc/xray-simple/direct_xray_simple.nft'), '')
+                L.resolveDefault(fs.read('/var/etc/xray-simple/direct_xray_simple.nft'), ''),
+                L.resolveDefault(fs.exec(initScript, ['dnsmasq_status']), { stdout: '', stderr: '' })
             ]);
         });
     },
@@ -358,6 +359,7 @@ return view.extend({
         const generalConfig = (uci.sections(variant, 'general') || [])[0] || {};
         const nftMode = generalConfig.nft_mode || 'firewall4';
         const generatedNft = nftMode === 'direct' ? loadResult[3] : loadResult[2];
+        const dnsmasqStatus = loadResult[4];
         const m = new form.Map(variant, _('Xray Simple'), _('Minimal Xray TProxy management. Xray JSON remains user-owned; this page only manages process and TProxy plumbing.'));
         let s, ss, o;
 
@@ -458,7 +460,37 @@ return view.extend({
             return validateRouteTable(value, _('IPv6 route table'));
         };
 
-        o = s.taboption('system', form.Flag, 'proxy_lan_dns', _('Proxy LAN DNS UDP/53'));
+        o = s.taboption('system', form.DummyValue, '_dnsmasq_upstream', _('dnsmasq upstream'));
+        o.rawhtml = true;
+        o.renderWidget = function () {
+            const configured = (generalConfig.dnsmasq_upstream || '0') === '1';
+            const active = configured && /status: active/.test(dnsmasqStatus.stdout || '');
+            const stateLabel = !configured ? _('Disabled') : active ? _('Active') : _('Inactive');
+            const stateColor = !configured ? '#777' : active ? '#2e7d32' : '#b26a00';
+
+            return E('div', {
+                'style': 'display:flex; align-items:center; gap:.75rem; flex-wrap:wrap'
+            }, [
+                E('span', {
+                    'style': 'display:inline-flex; align-items:center; gap:.4rem; color:' + stateColor + '; font-weight:600'
+                }, [
+                    E('span', {
+                        'style': 'width:.65rem; height:.65rem; border-radius:50%; background:' + stateColor
+                    }),
+                    stateLabel
+                ]),
+                E('button', {
+                    'type': 'button',
+                    'class': 'btn cbi-button cbi-button-action',
+                    'click': function (ev) {
+                        ev.preventDefault();
+                        window.location.href = L.url('admin/services/xray_simple/dnsmasq');
+                    }
+                }, _('Configure'))
+            ]);
+        };
+
+        o = s.taboption('system', form.Flag, 'proxy_lan_dns', _('Proxy LAN DNS UDP/53 directly through TProxy'));
         o.default = '1';
         o.rmempty = false;
 

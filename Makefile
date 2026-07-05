@@ -74,7 +74,7 @@ define Package/$(PKG_NAME)/install
 	$(INSTALL_DIR) $(1)/usr/share/nftables.d/table-pre
 	$(INSTALL_DATA) ./root/usr/share/nftables.d/table-pre/xray_simple.nft $(1)/usr/share/nftables.d/table-pre/xray_simple.nft
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/xray-simple
-	$(INSTALL_DATA) ./root/www/luci-static/resources/view/xray-simple/core-v2.js $(1)/www/luci-static/resources/view/xray-simple/core-v2.js
+	$(INSTALL_DATA) ./root/www/luci-static/resources/view/xray-simple/*.js $(1)/www/luci-static/resources/view/xray-simple/
 endef
 
 define Package/$(PKG_NAME)-zh/postinst

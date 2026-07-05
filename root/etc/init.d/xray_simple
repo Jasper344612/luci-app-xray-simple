@@ -16,6 +16,11 @@ ASYNC_STATUS="${RUNDIR}/last_command.status"
 ASYNC_LOG="${RUNDIR}/last_command.log"
 ASYNC_LOCK="${RUNDIR}/command.lock"
 XRAY_TEST_MODE="${RUNDIR}/xray-test-mode"
+DNSMASQ_STATE="${RUNDIR}/dnsmasq-fragments"
+DNSMASQ_CONFIG_GLOB="${DNSMASQ_CONFIG_GLOB:-/var/etc/dnsmasq.conf.*}"
+DNSMASQ_RUNTIME_GLOB="${DNSMASQ_RUNTIME_GLOB:-/tmp/dnsmasq*.d}"
+DNSMASQ_INIT="${DNSMASQ_INIT:-/etc/init.d/dnsmasq}"
+DNSMASQ_FRAGMENT=xray-simple.conf
 
 # 获取 @general[0] 下的 UCI 配置项值，若未配置则使用默认值
 # $1: 配置选项名称
@@ -176,6 +181,7 @@ valid_route_table() {
 
 validate_settings() {
 	local nft_mode tproxy_port mark outbound_mark table_v4 table_v6 item lan_ifaces
+	local dnsmasq_upstream dnsmasq_xray_port
 
 	nft_mode="$(uci_get nft_mode firewall4)"
 	tproxy_port="$(uci_get tproxy_port 12345)"
@@ -184,6 +190,8 @@ validate_settings() {
 	table_v4="$(uci_get route_table_v4 100)"
 	table_v6="$(uci_get route_table_v6 106)"
 	lan_ifaces="$(uci_list lan_ifaces)"
+	dnsmasq_upstream="$(uci_get dnsmasq_upstream 0)"
+	dnsmasq_xray_port="$(uci_get dnsmasq_xray_port 5353)"
 
 	case "$nft_mode" in
 		firewall4|direct) ;;
@@ -191,6 +199,18 @@ validate_settings() {
 	esac
 	valid_uint_range "$tproxy_port" 1 65535 || {
 		echo "invalid TProxy port: $tproxy_port"
+		return 1
+	}
+	case "$dnsmasq_upstream" in
+		0|1) ;;
+		*) echo "invalid dnsmasq upstream setting: $dnsmasq_upstream"; return 1 ;;
+	esac
+	valid_uint_range "$dnsmasq_xray_port" 1 65535 || {
+		echo "invalid Xray DNS inbound port: $dnsmasq_xray_port"
+		return 1
+	}
+	[ "$dnsmasq_upstream" != "1" ] || [ "$dnsmasq_xray_port" != "53" ] || {
+		echo "Xray DNS inbound port 53 conflicts with dnsmasq"
 		return 1
 	}
 	valid_uint_range "$mark" 1 4294967295 || {
@@ -314,6 +334,7 @@ write_config() {
 # 渲染内容包含：主入站/出站转发链规则、绕过规则集合、TCP/UDP TProxy 端口拦截、LAN 接口过滤和 DNS 重定向过滤等。
 write_nft() {
 	local tproxy_port mark outbound_mark mark_h outbound_mark_h proxy_lan_dns proxy_router_output
+	local dnsmasq_upstream
 	local bypass_ipv4 bypass_ipv6 nft_mode lan_ifaces bypass_uids bypass_gids wrap_table
 	local lan_match private_ipv4 private_ipv6
 
@@ -334,6 +355,10 @@ write_nft() {
 	mark_h="$(mark_hex "$mark")"
 	outbound_mark_h="$(mark_hex "$outbound_mark")"
 	proxy_lan_dns="$(uci_get proxy_lan_dns 1)"
+	dnsmasq_upstream="$(uci_get dnsmasq_upstream 0)"
+	# dnsmasq mode owns LAN UDP/53. Do not create the direct Xray DNS
+	# exception in the TProxy chain at the same time.
+	[ "$dnsmasq_upstream" = "1" ] && proxy_lan_dns=0
 	proxy_router_output="$(uci_get proxy_router_output 1)"
 	bypass_ipv4="$(nft_set_body "$(uci_list bypass_ipv4)")"
 	bypass_ipv6="$(nft_set_body "$(uci_list bypass_ipv6)")"
@@ -354,6 +379,16 @@ write_nft() {
 	fi
 	nft_write_set "bypass_ipv4" "ipv4_addr" "$bypass_ipv4"
 	nft_write_set "bypass_ipv6" "ipv6_addr" "$bypass_ipv6"
+	if [ "$dnsmasq_upstream" = "1" ]; then
+		cat >> "$NFT_FILE" <<-EOF
+	    chain xray_simple_dns_prerouting {
+	        type nat hook prerouting priority dstnat - 1; policy accept;
+
+	        ${lan_match}udp dport 53 redirect to :53
+	    }
+
+	EOF
+	fi
 	cat >> "$NFT_FILE" <<-EOF
 	    chain xray_simple_prerouting {
 	        type filter hook prerouting priority mangle + 10; policy accept;
@@ -601,6 +636,143 @@ ensure_fw4_include() {
 	printf '%s\n' 'include "/var/etc/xray-simple/fw4/*.nft"' > "$FW4_INCLUDE"
 }
 
+# Discover the conf-dir used by each running OpenWrt dnsmasq instance. Reading
+# generated configs works with both the shared 23.05 directory and the
+# per-instance directories introduced by newer OpenWrt releases.
+dnsmasq_confdirs() {
+	local config dir
+	for config in $DNSMASQ_CONFIG_GLOB; do
+		[ -f "$config" ] || continue
+		dir="$(sed -n 's/^conf-dir=\([^,]*\).*/\1/p' "$config" | head -n 1)"
+		case "$dir" in
+			/*) printf '%s\n' "$dir" ;;
+		esac
+	done | sort -u
+}
+
+reload_dnsmasq() {
+	"$DNSMASQ_INIT" restart
+}
+
+dnsmasq_upstream_ready() {
+	local port="$1" fragment found=0
+	[ -s "$DNSMASQ_STATE" ] || return 1
+	while IFS= read -r fragment; do
+		[ -s "$fragment" ] || return 1
+		grep -Fqx 'no-resolv' "$fragment" || return 1
+		grep -Fqx "server=127.0.0.1#${port}" "$fragment" || return 1
+		found=1
+	done <"$DNSMASQ_STATE"
+	[ "$found" = "1" ]
+}
+
+# Make Xray's loopback DNS inbound the dnsmasq upstream. The fragment is
+# runtime-only; /etc/config/dhcp remains untouched and can always be restored
+# by removing the fragment and restarting dnsmasq.
+setup_dnsmasq_upstream() {
+	local port dirs dir fragment output
+	[ "$(uci_get dnsmasq_upstream 0)" = "1" ] || return 0
+	[ -x "$DNSMASQ_INIT" ] || {
+		echo "dnsmasq service is not installed"
+		return 1
+	}
+	port="$(uci_get dnsmasq_xray_port 5353)"
+	dnsmasq_upstream_ready "$port" && return 0
+	dirs="$(dnsmasq_confdirs)"
+	[ -n "$dirs" ] || {
+		echo "no running dnsmasq configuration directory found"
+		return 1
+	}
+
+	mkdir -p "$RUNDIR"
+	: >"$DNSMASQ_STATE"
+	for dir in $dirs; do
+		mkdir -p "$dir" || {
+			restore_dnsmasq_upstream >/dev/null 2>&1
+			return 1
+		}
+		fragment="${dir}/${DNSMASQ_FRAGMENT}"
+		cat >"$fragment" <<-EOF
+		# Generated by xray_simple. Removed when Xray stops.
+		no-resolv
+		server=127.0.0.1#${port}
+		EOF
+		printf '%s\n' "$fragment" >>"$DNSMASQ_STATE"
+	done
+
+	output="$(reload_dnsmasq 2>&1)" || {
+		printf '%s\n' "$output"
+		restore_dnsmasq_upstream >/dev/null 2>&1
+		return 1
+	}
+}
+
+schedule_dnsmasq_upstream() {
+	[ "$(uci_get dnsmasq_upstream 0)" = "1" ] || return 0
+	(
+		sleep 5
+		if [ -n "$(xray_pids)" ]; then
+			setup_dnsmasq_upstream || logger -t xray_simple "failed to activate dnsmasq upstream"
+		else
+			restore_dnsmasq_upstream
+			logger -t xray_simple "Xray did not start; dnsmasq upstream was restored"
+		fi
+	) >/dev/null 2>&1 &
+}
+
+restore_dnsmasq_upstream() {
+	local fragment changed=0 output
+	if [ -s "$DNSMASQ_STATE" ]; then
+		while IFS= read -r fragment; do
+			case "$fragment" in
+				/*/${DNSMASQ_FRAGMENT})
+					[ ! -e "$fragment" ] || changed=1
+					rm -f "$fragment"
+				;;
+			esac
+		done <"$DNSMASQ_STATE"
+	fi
+	# Also clean the standard directories after an interrupted previous start.
+	for fragment in $DNSMASQ_RUNTIME_GLOB/${DNSMASQ_FRAGMENT}; do
+		[ -e "$fragment" ] || continue
+		changed=1
+		rm -f "$fragment"
+	done
+	rm -f "$DNSMASQ_STATE"
+	[ "$changed" = "1" ] || return 0
+	output="$(reload_dnsmasq 2>&1)" || {
+		printf '%s\n' "$output"
+		return 1
+	}
+}
+
+# Report both the saved preference and the runtime fragment state so LuCI can
+# distinguish a configured-but-stopped service from an active integration.
+dnsmasq_status() {
+	local enabled port pids fragment active=0
+	enabled="$(uci_get dnsmasq_upstream 0)"
+	port="$(uci_get dnsmasq_xray_port 5353)"
+	pids="$(xray_pids)"
+	if [ -s "$DNSMASQ_STATE" ]; then
+		while IFS= read -r fragment; do
+			[ -s "$fragment" ] && active=1
+		done <"$DNSMASQ_STATE"
+	fi
+
+	echo "configured: $enabled"
+	echo "Xray DNS upstream: 127.0.0.1:${port}"
+	if [ "$enabled" = "1" ] && [ -n "$pids" ] && [ "$active" = "1" ]; then
+		echo "status: active"
+	else
+		echo "status: inactive"
+	fi
+	if [ "$active" = "1" ]; then
+		echo "dnsmasq runtime fragment: installed"
+	else
+		echo "dnsmasq runtime fragment: not installed"
+	fi
+}
+
 # procd 启动服务回调入口。
 # 依次进行：读取配置并校验、加载 TProxy 驱动模块、配置运行目录及 config.json、生成 nft 规则、开启策略路由、应用防火墙，并最终通过 procd 拉起 Xray 守护进程实例。
 start_service() {
@@ -631,7 +803,6 @@ start_service() {
 		flush_routes
 		return 1
 	}
-
 	procd_open_instance
 	procd_set_param respawn
 	procd_set_param command "$xray_bin" run -confdir "$RUNDIR"
@@ -642,10 +813,15 @@ start_service() {
 	fi
 	procd_set_param file /etc/config/xray_simple
 	procd_close_instance
+	# procd starts the process only after this callback returns. Boot-time
+	# starts therefore activate dnsmasq asynchronously after Xray is ready;
+	# explicit LuCI commands also perform a synchronous check below.
+	schedule_dnsmasq_upstream
 }
 
 # procd 停止服务回调入口。清理生成的防火墙规则并释放策略路由。
 stop_service() {
+	restore_dnsmasq_upstream || true
 	[ "${RELOAD_KEEP_TPROXY:-0}" = "1" ] && return 0
 	flush_firewall
 	flush_routes
@@ -688,6 +864,7 @@ reload_service() {
 	rc="$?"
 	unset XRAY_CONFIG_VALIDATED
 	[ "$rc" = "0" ] || {
+		restore_dnsmasq_upstream || true
 		flush_firewall
 		flush_routes
 		return 1
@@ -706,6 +883,11 @@ status_service() {
 	fi
 	echo
 	echo "nft mode: $(uci_get nft_mode firewall4)"
+	if [ "$(uci_get dnsmasq_upstream 0)" = "1" ]; then
+		echo "DNS mode: dnsmasq -> Xray 127.0.0.1:$(uci_get dnsmasq_xray_port 5353)"
+	else
+		echo "DNS mode: direct UDP/53 TProxy=$(uci_get proxy_lan_dns 1)"
+	fi
 	echo "active profile: $(active_profile_label)"
 	echo "mark: $(uci_get mark 1)"
 	echo "tproxy port: $(uci_get tproxy_port 12345)"
@@ -928,7 +1110,14 @@ switch_profile() {
 	uci set "${NAME}.@general[0].enabled=1"
 	uci commit "$NAME"
 	reload_service || return 1
-	assert_running || return 1
+	assert_running || {
+		stop
+		return 1
+	}
+	setup_dnsmasq_upstream || {
+		stop
+		return 1
+	}
 	echo "active profile switched to $(active_profile_label)"
 }
 
@@ -957,7 +1146,14 @@ start_now() {
 	else
 		start || return 1
 	fi
-	assert_running || return 1
+	assert_running || {
+		stop
+		return 1
+	}
+	setup_dnsmasq_upstream || {
+		stop
+		return 1
+	}
 	echo "Xray Simple start requested."
 }
 
@@ -974,7 +1170,14 @@ restart_now() {
 	uci set "${NAME}.@general[0].enabled=1"
 	uci commit "$NAME"
 	reload_service || return 1
-	assert_running || return 1
+	assert_running || {
+		stop
+		return 1
+	}
+	setup_dnsmasq_upstream || {
+		stop
+		return 1
+	}
 	echo "Xray Simple restart requested."
 }
 
@@ -1049,6 +1252,7 @@ extra_command "test_config" "Validate active Xray JSON configuration"
 extra_command "test_json_file" "Validate a JSON config file"
 extra_command "nft_status" "Show nftables and policy routing status"
 extra_command "geodata_status" "Show Xray geo database status"
+extra_command "dnsmasq_status" "Show dnsmasq upstream integration status"
 extra_command "switch_profile" "Switch active profile and reload"
 extra_command "run_async" "Run a long Xray Simple command in background"
 extra_command "async_status" "Show last async Xray Simple command status"

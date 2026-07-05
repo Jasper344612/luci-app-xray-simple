@@ -16,6 +16,7 @@ The app intentionally keeps Xray configuration user-owned: you edit and switch f
 - LAN interface selection, bypass IPv4/IPv6 CIDR lists, bypass UID/GID, policy mark and route table settings.
 - nftables status view with generated rule preview.
 - Optional forwarding of Xray stdout/stderr to the OpenWrt system log.
+- Optional dnsmasq frontend with a local Xray DNS inbound as its upstream.
 - Geo database reminder for `geoip.dat` and `geosite.dat`.
 - Optional Chinese translation package: `luci-app-xray-simple-zh`.
 
@@ -142,6 +143,20 @@ never falls back to intercepting every ingress interface.
 
 When **Proxy LAN DNS UDP/53** is enabled, LAN-side UDP/53 traffic is intercepted before private-range bypass rules. TCP/53 is not intercepted by the DNS-specific rule.
 
+### dnsmasq upstream mode
+
+When **Use dnsmasq as Xray DNS frontend** is enabled, Xray Simple:
+
+- redirects LAN UDP/53 to the router's dnsmasq;
+- disables the direct UDP/53 TProxy exception;
+- writes a runtime-only dnsmasq fragment using `127.0.0.1:5353` (or the configured port) as upstream;
+- removes the fragment and restarts dnsmasq when Xray stops or fails to start.
+
+The active Xray JSON must contain a DNS inbound bound to `127.0.0.1` on the configured port. Xray Simple does not modify user JSON. The runtime fragment is stored in the conf-dir of each active dnsmasq instance; `/etc/config/dhcp` is not changed.
+
+The System Settings tab shows the live dnsmasq upstream activation state. Use
+its **Configure** button to open the dedicated dnsmasq settings page.
+
 ## Rule Loading Modes
 
 ### firewall4 include
@@ -225,7 +240,7 @@ https://github.com/Jasper344612/luci-app-xray-simple/actions
 From this repository:
 
 ```sh
-node --check root/www/luci-static/resources/view/xray-simple/core-v2.js
+find root/www/luci-static/resources/view/xray-simple -name '*.js' -exec node --check {} \;
 sh -n root/etc/init.d/xray_simple
 sh -n root/etc/uci-defaults/xray_simple
 jq . root/usr/share/rpcd/acl.d/luci-app-xray-simple.json
