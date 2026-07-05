@@ -8,9 +8,6 @@ msgstr ""
 msgid "%s must be an integer between %s and %s"
 msgstr "%s 必须是 %s 到 %s 之间的整数"
 
-msgid "%s test failed:\n\n%s"
-msgstr "%s 校验失败：\n\n%s"
-
 msgid "All Xray outbounds must set streamSettings.sockopt.mark to the Xray outbound bypass mark, otherwise traffic may loop back into TProxy. Current bypass mark: %s."
 msgstr "所有 Xray 出站都必须将 streamSettings.sockopt.mark 设置为 Xray 出站绕过 mark，否则流量可能回环进入 TProxy。当前绕过 mark：%s。"
 
@@ -44,8 +41,8 @@ msgstr "关闭"
 msgid "Close command error"
 msgstr "关闭命令错误"
 
-msgid "Default geodata download directory. Xray Simple sets XRAY_LOCATION_ASSET to this directory when validating and running Xray."
-msgstr "默认 geodata 下载目录。Xray Simple 在校验和运行 Xray 时会将 XRAY_LOCATION_ASSET 设置为此目录。"
+msgid "Default geodata download directory. Xray Simple sets XRAY_LOCATION_ASSET to this directory when running Xray."
+msgstr "默认 geodata 下载目录。Xray Simple 在运行 Xray 时会将 XRAY_LOCATION_ASSET 设置为此目录。"
 
 msgid "Description"
 msgstr "简介"
@@ -173,9 +170,6 @@ msgstr "至少需要保留一个 Xray 配置。"
 msgid "At least one LAN interface is required."
 msgstr "至少需要配置一个 LAN 接口。"
 
-msgid "Profile: %s"
-msgstr "配置：%s"
-
 msgid "Proxy LAN DNS UDP/53 directly through TProxy"
 msgstr "通过 TProxy 直接代理 LAN DNS UDP/53"
 
@@ -278,9 +272,6 @@ msgstr "停止 TProxy"
 msgid "Switch & Restart"
 msgstr "切换并重启"
 
-msgid "Syntax error in %s: %s"
-msgstr "%s 中存在语法错误：%s"
-
 msgid "System Settings"
 msgstr "系统设置"
 
@@ -296,17 +287,8 @@ msgstr "工具"
 msgid "UID must be numeric"
 msgstr "UID 必须是数字"
 
-msgid "Validate Xray config"
-msgstr "校验 Xray 配置"
-
-msgid "Validation failed"
-msgstr "校验失败"
-
 msgid "Xray"
 msgstr "Xray"
-
-msgid "Xray Configuration Validation Failed"
-msgstr "Xray 配置校验失败"
 
 msgid "Xray Simple"
 msgstr "Xray Simple"
@@ -340,9 +322,6 @@ msgstr "Xray 资源文件目录"
 
 msgid "Xray binary"
 msgstr "Xray 可执行文件"
-
-msgid "Xray config must be a JSON object"
-msgstr "Xray 配置必须是 JSON 对象"
 
 msgid "Xray outbound bypass mark"
 msgstr "Xray 出站绕过 mark"

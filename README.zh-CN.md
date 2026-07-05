@@ -11,7 +11,6 @@
 - 系统设置、进程管理和运行日志三个 LuCI 标签页。
 - 管理多个 JSON 配置，并可一键切换和重启。
 - 导入、导出配置 JSON。
-- 使用设备中安装的 Xray 校验配置。
 - 支持通过 `firewall4` include 或直接 `nft` 两种模式加载 TProxy 规则。
 - 支持选择 LAN 接口、绕过 IPv4/IPv6 CIDR、UID/GID、策略标记和路由表。
 - 查看 nftables 状态和生成的规则。
@@ -43,7 +42,7 @@ opkg update
 opkg install v2ray-geoip v2ray-geosite
 ```
 
-默认 Xray 资源目录为 `/usr/share/xray`。校验和启动 Xray 时，`xray_simple` 会将 `XRAY_LOCATION_ASSET` 设置为该目录。可在 **系统设置 -> Xray 资源目录** 中修改。
+默认 Xray 资源目录为 `/usr/share/xray`。启动 Xray 时，`xray_simple` 会将 `XRAY_LOCATION_ASSET` 设置为该目录。可在 **系统设置 -> Xray 资源目录** 中修改。
 
 ## 安装与升级
 
@@ -153,7 +152,6 @@ table inet xray_simple
 /etc/init.d/xray_simple stop
 /etc/init.d/xray_simple restart
 /etc/init.d/xray_simple status
-/etc/init.d/xray_simple test_config
 /etc/init.d/xray_simple nft_status
 /etc/init.d/xray_simple geodata_status
 /etc/init.d/xray_simple recent_xray_logs

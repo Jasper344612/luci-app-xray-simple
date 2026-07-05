@@ -16,7 +16,6 @@ ROUTE_STATE="$RUNDIR/route.state"
 ASYNC_STATUS="$RUNDIR/last_command.status"
 ASYNC_LOG="$RUNDIR/last_command.log"
 ASYNC_LOCK="$RUNDIR/command.lock"
-XRAY_TEST_MODE="$RUNDIR/xray-test-mode"
 DNSMASQ_STATE="$RUNDIR/dnsmasq-fragments"
 DNSMASQ_CONFIG_GLOB="$RUNDIR/generated-dnsmasq.conf.*"
 DNSMASQ_RUNTIME_GLOB="$RUNDIR/dnsmasq*.d"
@@ -136,33 +135,6 @@ for table in 0 253 254 255; do
 	fi
 done
 
-cfg_xray_valid=1
-xray_env() {
-	if [ "$2" = test ]; then
-		echo "xray test: unknown command"
-		return 1
-	fi
-	if [ "$cfg_xray_valid" = 1 ]; then
-		echo "Configuration OK"
-		return 0
-	fi
-	echo "invalid Xray configuration"
-	return 1
-}
-
-xray_test_confdir /usr/bin/xray "$RUNDIR" >/dev/null
-test "$(cat "$XRAY_TEST_MODE")" = '/usr/bin/xray run'
-cfg_xray_valid=0
-if xray_test_confdir /usr/bin/xray "$RUNDIR" >"$RUNDIR/xray-error.out"; then
-	echo 'invalid Xray configuration unexpectedly succeeded' >&2
-	exit 1
-fi
-grep -Fq 'invalid Xray configuration' "$RUNDIR/xray-error.out"
-if grep -Fq 'unknown command' "$RUNDIR/xray-error.out"; then
-	echo 'cached Xray test mode was not reused' >&2
-	exit 1
-fi
-
 ip_calls="$RUNDIR/ip.calls"
 ip() {
 	printf '%s\n' "$*" >>"$ip_calls"
@@ -220,5 +192,13 @@ kill() {
 echo 2 >"$pid_state"
 terminate_xray_processes
 grep -Fq '4242' "$kill_calls"
+
+reload_order="$RUNDIR/reload.order"
+stop() { echo stop >>"$reload_order"; }
+start() { echo start >>"$reload_order"; }
+echo 0 >"$pid_state"
+reload_service
+test "$(sed -n '1p' "$reload_order")" = stop
+test "$(sed -n '2p' "$reload_order")" = start
 
 echo 'init script regression tests: OK'

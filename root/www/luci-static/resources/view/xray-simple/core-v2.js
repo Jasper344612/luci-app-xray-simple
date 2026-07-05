@@ -8,9 +8,6 @@
 const variant = 'xray_simple';
 const initScript = '/etc/init.d/xray_simple';
 const longRunningCommands = ['start_now', 'stop_now', 'restart_now', 'start_tproxy', 'stop_tproxy', 'switch_profile'];
-// Import validation writes to a fixed temporary file because rpcd ACLs need
-// explicit file paths; arbitrary upload paths would require broader privileges.
-const importTestPath = '/tmp/xray-simple-import.json';
 
 /**
  * 校验并解析一个正整数值。如果输入不是正整数，则返回本地化的报错字符串；校验通过则返回 true。
@@ -386,7 +383,7 @@ function shouldReloadAfter(command) {
 
 /**
  * 封装调用后端的 init.d 脚本以执行指定的命令行命令，并在执行完成后统一处理成功或失败的弹窗呈现。
- * @param {string} command - 后端支持的指令名 (如 start_now, stop_now, test_config 等)
+ * @param {string} command - 后端支持的指令名 (如 start_now、stop_now 等)
  * @param {Array<string>} args - 传递给后端指令的参数
  * @returns {Promise} rpcd 执行结果 Promise 对象
  */
@@ -441,23 +438,6 @@ function commandGroup(section, tab, id, label, buttons) {
 }
 
 /**
- * 校验一段字符串是否是合法的 JSON 对象（且非 Array、非 null、必须是 JSON 对象结构）。
- * @param {string} value - 待校验的 JSON 配置文本
- * @returns {boolean|string} 如果合法返回 true，否则返回具体抛出的错误描述字符串
- */
-function jsonObjectValidator(value) {
-    try {
-        const parsed = JSON.parse(value || '{}');
-        if (Array.isArray(parsed) || parsed === null || typeof parsed !== 'object') {
-            return _('Xray config must be a JSON object');
-        }
-        return true;
-    } catch (e) {
-        return e.message;
-    }
-}
-
-/**
  * 解析后端传来的 geodata 检测输出文本。将其解析为一个包含资源路径、geoip 以及 geosite 存在状态的对象。
  * @param {string} output - 后端命令 geodata_status 的返回文本
  * @returns {Object} 解析后的状态结果结构体
@@ -508,7 +488,7 @@ return view.extend({
 
     /**
      * LuCI 视图的生命周期函数：根据 load 阶段返回的数据渲染并生成前端表单 DOM。
-     * 涵盖：系统设置、Xray配置与 profile 管理、进程状态管理等 3 个子标签页及保存时的 Xray 配置语法校验逻辑。
+     * 涵盖：系统设置、Xray配置与 profile 管理、进程状态管理等 3 个子标签页。
      * @param {Array} loadResult - 含有 geodata_status, status, nft_rules 结果的数组
      * @returns {Node} 渲染后的 DOM 树节点
      */
@@ -542,7 +522,7 @@ return view.extend({
         o.default = '/usr/bin/xray';
         o.rmempty = false;
 
-        o = s.taboption('system', form.Value, 'asset_dir', _('Xray asset directory'), _('Default geodata download directory. Xray Simple sets XRAY_LOCATION_ASSET to this directory when validating and running Xray.'));
+        o = s.taboption('system', form.Value, 'asset_dir', _('Xray asset directory'), _('Default geodata download directory. Xray Simple sets XRAY_LOCATION_ASSET to this directory when running Xray.'));
         o.default = '/usr/share/xray';
         o.rmempty = false;
 
@@ -777,9 +757,6 @@ return view.extend({
         o.cfgvalue = function (sectionId) {
             return uci.get(variant, sectionId, 'json_config') || '{}';
         };
-        o.validate = function (sectionId, value) {
-            return jsonObjectValidator(value);
-        };
 
         o = ss.option(form.DummyValue, '_profile_actions', _('Profile actions'));
         o.modalonly = false;
@@ -829,7 +806,6 @@ return view.extend({
             { label: _('Stop TProxy'), command: 'stop_tproxy', style: 'reset' }
         ]);
         commandGroup(s, 'process', 'tool_actions', _('Tools'), [
-            { label: _('Validate Xray config'), command: 'test_config', style: 'action' },
             { label: _('Show nftables status'), command: 'nft_status', style: 'action' }
         ]);
 
@@ -916,46 +892,9 @@ return view.extend({
                     return Promise.reject(_('At least one LAN interface is required.'));
                 }
 
-                const configsToTest = [];
-                const sections = uci.sections(variant, 'profile') || [];
-                sections.forEach(function (s) {
-                    const name = s.name || s['.name'];
-                    const json = s.json_config;
-                    if (json) {
-                        configsToTest.push({ label: _('Profile: %s').format(name), value: json });
-                    }
-                });
-
-                let chain = Promise.resolve();
-                configsToTest.forEach(function (item) {
-                    chain = chain.then(function () {
-                        const jsonErr = jsonObjectValidator(item.value);
-                        if (jsonErr !== true) {
-                            return Promise.reject(_('Syntax error in %s: %s').format(item.label, jsonErr));
-                        }
-                        return fs.write(importTestPath, item.value).then(function () {
-                            return fs.exec(initScript, ['test_json_file', importTestPath]);
-                        }).catch(function (err) {
-                            const detail = commandErrorText(err) || _('Validation failed');
-                            return Promise.reject(_('%s test failed:\n\n%s').format(item.label, detail));
-                        });
-                    });
-                });
-
-                return chain;
+                return true;
             }).then(function () {
                 return uci.save();
-            }).catch(function (err) {
-                ui.showModal(_('Xray Configuration Validation Failed'), [
-                    E('pre', { 'style': 'white-space: pre-wrap; word-break: break-all; max-height: 24em; overflow: auto' }, String(err)),
-                    E('div', { 'class': 'right' }, [
-                        E('button', {
-                            'class': 'btn',
-                            'click': function () { ui.hideModal(); }
-                        }, _('Close'))
-                    ])
-                ]);
-                return Promise.reject(err);
             });
         };
 
