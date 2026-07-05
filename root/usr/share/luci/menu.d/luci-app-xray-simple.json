@@ -13,22 +13,5 @@
                 "xray_simple": true
             }
         }
-    },
-    "admin/services/xray_simple/dnsmasq": {
-        "title": "dnsmasq upstream",
-        "order": 10,
-        "hidden": true,
-        "action": {
-            "type": "view",
-            "path": "xray-simple/dnsmasq"
-        },
-        "depends": {
-            "acl": [
-                "luci-app-xray-simple"
-            ],
-            "uci": {
-                "xray_simple": true
-            }
-        }
     }
 }

@@ -198,6 +198,165 @@ function showCommandResult(title, text, reloadAfterClose) {
     ]);
 }
 
+function showDnsmasqModal(sectionId) {
+    const dnsmasq_upstream = uci.get('xray_simple', sectionId, 'dnsmasq_upstream') || '0';
+    const dnsmasq_xray_port = uci.get('xray_simple', sectionId, 'dnsmasq_xray_port') || '5353';
+
+    const enabledInput = E('input', {
+        'type': 'checkbox',
+        'id': 'dnsmasq_upstream_cb',
+        'checked': dnsmasq_upstream === '1' ? 'checked' : null,
+        'change': function() {
+            const portDiv = document.getElementById('dnsmasq_port_container');
+            if (portDiv) {
+                portDiv.style.display = this.checked ? '' : 'none';
+            }
+        }
+    });
+
+    const portInput = E('input', {
+        'type': 'text',
+        'id': 'dnsmasq_xray_port_input',
+        'class': 'cbi-input-text',
+        'value': dnsmasq_xray_port,
+        'placeholder': '5353'
+    });
+
+    const portContainer = E('div', {
+        'id': 'dnsmasq_port_container',
+        'class': 'cbi-value',
+        'style': dnsmasq_upstream === '1' ? '' : 'display:none'
+    }, [
+        E('label', { 'class': 'cbi-value-title', 'for': 'dnsmasq_xray_port_input' }, _('Xray DNS inbound port')),
+        E('div', { 'class': 'cbi-value-field' }, [
+            portInput,
+            E('div', { 'class': 'cbi-value-description' }, _('The active Xray JSON must provide a DNS inbound listening on 127.0.0.1 at this port. Port 53 is reserved for dnsmasq.'))
+        ])
+    ]);
+
+    const example = '{\n' +
+        '  "inbounds": [\n' +
+        '    {\n' +
+        '      "tag": "dns-in",\n' +
+        '      "port": 5353,\n' +
+        '      "listen": "127.0.0.1",\n' +
+        '      "protocol": "dokodemo-door"\n' +
+        '    }\n' +
+        '  ],\n' +
+        '  "routing": {\n' +
+        '    "rules": [\n' +
+        '      {\n' +
+        '        "type": "field",\n' +
+        '        "inboundTag": [\n' +
+        '          "dns-in"\n' +
+        '        ],\n' +
+        '        "outboundTag": "dns-out"\n' +
+        '      }\n' +
+        '    ]\n' +
+        '  },\n' +
+        '  "outbounds": [\n' +
+        '    {\n' +
+        '      "tag": "dns-out",\n' +
+        '      "protocol": "dns"\n' +
+        '    }\n' +
+        '  ]\n' +
+        '}';
+
+    const content = E('div', { 'style': 'width: 100%; padding: 0.5rem 0' }, [
+        E('div', { 'class': 'cbi-map-descr', 'style': 'margin-bottom: 1.5rem' }, _('Use dnsmasq as the LAN DNS frontend and forward its queries to a local Xray DNS inbound.')),
+        
+        E('div', { 'class': 'cbi-value' }, [
+            E('label', { 'class': 'cbi-value-title', 'for': 'dnsmasq_upstream_cb' }, _('Enable dnsmasq upstream')),
+            E('div', { 'class': 'cbi-value-field' }, [
+                enabledInput,
+                E('div', { 'class': 'cbi-value-description' }, _('Redirect LAN UDP/53 to dnsmasq and use the local Xray DNS inbound as upstream. Enabling this option automatically disables direct LAN DNS UDP/53 TProxy. Restart Xray after changing this setting.'))
+            ])
+        ]),
+
+        portContainer,
+
+        E('div', { 'class': 'cbi-value' }, [
+            E('label', { 'class': 'cbi-value-title' }, _('Runtime behavior')),
+            E('div', { 'class': 'cbi-value-field' }, [
+                E('div', {
+                    'class': 'cbi-value-description',
+                    'style': 'border-left:4px solid #4b74c6; background:rgba(75,116,198,.09); padding:.75rem 1rem; line-height:1.55; margin-bottom: 1rem'
+                }, _('Xray Simple keeps /etc/config/dhcp unchanged. It installs a temporary dnsmasq fragment only while Xray is running and removes it when Xray stops or fails to start.'))
+            ])
+        ]),
+
+        E('div', { 'class': 'cbi-value' }, [
+            E('label', { 'class': 'cbi-value-title' }, _('Required Xray JSON configuration')),
+            E('div', { 'class': 'cbi-value-field' }, [
+                E('div', {
+                    'class': 'cbi-value-description',
+                    'style': 'margin-bottom:.75rem'
+                }, _('Merge the following inbound, routing rule, and outbound into the active Xray JSON yourself. The configured Xray DNS inbound port must match this inbound, and the existing top-level dns configuration must define the required upstream servers.')),
+                E('pre', {
+                    'style': 'white-space:pre; overflow:auto; max-height:20rem; margin:0; background:#f4f4f4; padding:.5rem; border:1px solid #ccc; border-radius:3px'
+                }, example)
+            ])
+        ]),
+
+        E('div', { 'class': 'right' }, [
+            E('button', {
+                'type': 'button',
+                'class': 'btn cbi-button',
+                'click': function () {
+                    ui.hideModal();
+                }
+            }, _('Close')),
+            ' ',
+            E('button', {
+                'type': 'button',
+                'class': 'btn cbi-button cbi-button-action',
+                'click': function () {
+                    const isEnabled = enabledInput.checked ? '1' : '0';
+                    const port = portInput.value.trim();
+
+                    if (isEnabled === '1') {
+                        if (!port || isNaN(port) || parseInt(port) <= 0 || parseInt(port) > 65535) {
+                            alert(_('Invalid port number'));
+                            return;
+                        }
+                        if (port === '53') {
+                            alert(_('Port 53 is reserved for dnsmasq'));
+                            return;
+                        }
+                    }
+
+                    uci.set('xray_simple', sectionId, 'dnsmasq_upstream', isEnabled);
+                    uci.set('xray_simple', sectionId, 'dnsmasq_xray_port', port);
+                    if (isEnabled === '1') {
+                        uci.set('xray_simple', sectionId, 'proxy_lan_dns', '0');
+                    }
+
+                    uci.save().then(function() {
+                        ui.hideModal();
+                        location.reload();
+                    }).catch(function(err) {
+                        alert(_('Failed to save configuration: ') + err.message);
+                    });
+                }
+            }, _('Save'))
+        ])
+    ]);
+
+    ui.showModal(_('dnsmasq upstream'), [ content ]);
+
+    window.setTimeout(function() {
+        let p = content.parentNode;
+        while (p && !p.classList.contains('modal')) {
+            p = p.parentNode;
+        }
+        if (p) {
+            p.style.width = '60rem';
+            p.style.maxWidth = '95%';
+        }
+    }, 50);
+}
+
+
 /**
  * 稍后刷新页面，用于等待 LuCI 将 pending changes 写入浏览器端 change cache。
  */
@@ -462,7 +621,7 @@ return view.extend({
 
         o = s.taboption('system', form.DummyValue, '_dnsmasq_upstream', _('dnsmasq upstream'));
         o.rawhtml = true;
-        o.renderWidget = function () {
+        o.renderWidget = function (sectionId) {
             const configured = (generalConfig.dnsmasq_upstream || '0') === '1';
             const active = configured && /status: active/.test(dnsmasqStatus.stdout || '');
             const stateLabel = !configured ? _('Disabled') : active ? _('Active') : _('Inactive');
@@ -484,7 +643,7 @@ return view.extend({
                     'class': 'btn cbi-button cbi-button-action',
                     'click': function (ev) {
                         ev.preventDefault();
-                        window.location.href = L.url('admin/services/xray_simple/dnsmasq');
+                        showDnsmasqModal(sectionId);
                     }
                 }, _('Configure'))
             ]);
