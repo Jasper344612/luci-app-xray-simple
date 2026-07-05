@@ -778,13 +778,18 @@ dnsmasq_status() {
 start_service() {
 	[ "$(uci_get enabled 0)" = "1" ] || return 0
 
-	local xray_bin system_log
+	local xray_bin system_log stale_pids
 	xray_bin="$(uci_get xray_bin /usr/bin/xray)"
 	system_log="$(uci_get system_log 1)"
 	command -v "$xray_bin" >/dev/null 2>&1 || {
 		echo "xray binary not found: $xray_bin"
 		return 1
 	}
+	stale_pids="$(xray_pids)"
+	if [ -n "$stale_pids" ]; then
+		echo "stale Xray Simple process found before start: $stale_pids"
+		terminate_xray_processes || return 1
+	fi
 
 	modprobe nft_tproxy 2>/dev/null
 	write_config
@@ -859,6 +864,10 @@ reload_service() {
 	rc="$?"
 	unset RELOAD_KEEP_TPROXY
 	[ "$rc" = "0" ] || return "$rc"
+	if ! wait_for_xray_exit 10; then
+		echo "Xray did not exit after procd stop; terminating stale process"
+		terminate_xray_processes || return 1
+	fi
 	export XRAY_CONFIG_VALIDATED=1
 	start
 	rc="$?"
@@ -907,6 +916,35 @@ xray_pids() {
 	local xray_bin
 	xray_bin="$(uci_get xray_bin /usr/bin/xray)"
 	ps w 2>/dev/null | awk -v xray_bin="$xray_bin" '$5 == xray_bin && index($0, " run ") && index($0, "confdir /var/etc/xray-simple") { printf "%s%s", sep, $1; sep = " " }'
+}
+
+# Wait until all Xray processes managed by this service have exited. procd stop
+# is asynchronous on some builds, so starting the replacement immediately can
+# otherwise leave two memory-heavy Xray processes alive at once.
+wait_for_xray_exit() {
+	local timeout="${1:-10}"
+	while [ "$timeout" -gt 0 ]; do
+		[ -z "$(xray_pids)" ] && return 0
+		sleep 1
+		timeout=$((timeout - 1))
+	done
+	[ -z "$(xray_pids)" ]
+}
+
+# Terminate only instances whose command line points at Xray Simple's runtime
+# confdir. Other Xray processes on the router are deliberately left alone.
+terminate_xray_processes() {
+	local pids
+	pids="$(xray_pids)"
+	[ -n "$pids" ] || return 0
+	kill $pids 2>/dev/null || true
+	wait_for_xray_exit 5 && return 0
+	pids="$(xray_pids)"
+	[ -n "$pids" ] && kill -9 $pids 2>/dev/null
+	wait_for_xray_exit 2 || {
+		echo "failed to terminate stale Xray Simple process: $(xray_pids)"
+		return 1
+	}
 }
 
 # 过滤系统日志，获取最近 100 条与 xray 相关的日志信息。
@@ -1162,6 +1200,7 @@ stop_now() {
 	uci set "${NAME}.@general[0].enabled=0"
 	uci commit "$NAME"
 	stop
+	wait_for_xray_exit 10 || terminate_xray_processes || return 1
 	echo "Xray Simple stopped and disabled in Xray Simple settings."
 }
 

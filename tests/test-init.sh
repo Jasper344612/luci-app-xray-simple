@@ -199,4 +199,26 @@ for _ in $(seq 1 20); do
 done
 test ! -e "$ASYNC_LOCK"
 
+pid_state="$RUNDIR/xray-pid-state"
+xray_pids() {
+	local remaining
+	remaining="$(cat "$pid_state")"
+	if [ "$remaining" -gt 0 ]; then
+		echo 4242
+		echo $((remaining - 1)) >"$pid_state"
+	fi
+}
+echo 1 >"$pid_state"
+wait_for_xray_exit 2
+test "$(cat "$pid_state")" = 0
+
+kill_calls="$RUNDIR/kill.calls"
+kill() {
+	printf '%s\n' "$*" >>"$kill_calls"
+	echo 0 >"$pid_state"
+}
+echo 2 >"$pid_state"
+terminate_xray_processes
+grep -Fq '4242' "$kill_calls"
+
 echo 'init script regression tests: OK'
