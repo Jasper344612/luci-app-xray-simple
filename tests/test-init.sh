@@ -68,6 +68,7 @@ fi
 cfg_dnsmasq=1
 write_nft
 grep -Fq 'chain xray_simple_dns_prerouting' "$direct_rules"
+grep -Fq 'type nat hook prerouting priority mangle - 1; policy accept;' "$direct_rules"
 grep -Fq 'iifname { "br-lan" } udp dport 53 redirect to :53' "$direct_rules"
 if grep -Fq 'udp dport != 53' "$direct_rules"; then
 	echo 'dnsmasq mode unexpectedly retained direct UDP/53 TProxy rules' >&2

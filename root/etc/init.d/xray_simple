@@ -304,7 +304,9 @@ write_nft() {
 	if [ "$dnsmasq_upstream" = "1" ]; then
 		cat >> "$NFT_FILE" <<-EOF
 	    chain xray_simple_dns_prerouting {
-	        type nat hook prerouting priority dstnat - 1; policy accept;
+	        # Run before the TProxy chain (mangle + 10 = -140), including
+	        # when a LAN client sends DNS directly to an external resolver.
+	        type nat hook prerouting priority mangle - 1; policy accept;
 
 	        ${lan_match}udp dport 53 redirect to :53
 	    }
