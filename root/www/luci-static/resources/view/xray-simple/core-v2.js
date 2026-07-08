@@ -514,9 +514,17 @@ return view.extend({
         o.default = '0';
         o.rmempty = false;
 
-        o = s.taboption('system', form.Flag, 'system_log', _('Write Xray output to system log'), _('Send Xray stdout and stderr to the OpenWrt system log. Restart Xray after changing this setting.'));
+        o = s.taboption('system', form.Flag, 'system_log', _('Write Xray output to system log'), _('When enabled, send Xray stdout and stderr to the OpenWrt system log. When disabled, keep them only in the Xray runtime log tab. Restart Xray after changing this setting.'));
         o.default = '1';
         o.rmempty = false;
+
+        o = s.taboption('system', form.Value, 'runtime_log_file', _('Xray runtime log file'), _('Absolute path used when system log output is disabled.'));
+        o.default = '/var/etc/xray-simple/xray.log';
+        o.rmempty = false;
+        o.depends('system_log', '0');
+        o.validate = function (sectionId, value) {
+            return value && value.charAt(0) === '/' ? true : _('The runtime log path must be absolute.');
+        };
 
         o = s.taboption('system', form.Value, 'xray_bin', _('Xray binary'));
         o.default = '/usr/bin/xray';

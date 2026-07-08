@@ -15,6 +15,7 @@ ROUTE_STATE="${RUNDIR}/route.state"
 ASYNC_STATUS="${RUNDIR}/last_command.status"
 ASYNC_LOG="${RUNDIR}/last_command.log"
 ASYNC_LOCK="${RUNDIR}/command.lock"
+XRAY_LOG_WRAPPER=/usr/libexec/xray-simple-run
 DNSMASQ_STATE="${RUNDIR}/dnsmasq-fragments"
 DNSMASQ_CONFIG_GLOB="${DNSMASQ_CONFIG_GLOB:-/var/etc/dnsmasq.conf.*}"
 DNSMASQ_RUNTIME_GLOB="${DNSMASQ_RUNTIME_GLOB:-/tmp/dnsmasq*.d}"
@@ -103,7 +104,7 @@ valid_route_table() {
 
 validate_settings() {
 	local nft_mode tproxy_port mark outbound_mark table_v4 table_v6 item lan_ifaces
-	local dnsmasq_upstream dnsmasq_xray_port
+	local dnsmasq_upstream dnsmasq_xray_port system_log runtime_log_file
 
 	nft_mode="$(uci_get nft_mode firewall4)"
 	tproxy_port="$(uci_get tproxy_port 12345)"
@@ -114,6 +115,8 @@ validate_settings() {
 	lan_ifaces="$(uci_list lan_ifaces)"
 	dnsmasq_upstream="$(uci_get dnsmasq_upstream 0)"
 	dnsmasq_xray_port="$(uci_get dnsmasq_xray_port 5353)"
+	system_log="$(uci_get system_log 1)"
+	runtime_log_file="$(uci_get runtime_log_file "${RUNDIR}/xray.log")"
 
 	case "$nft_mode" in
 		firewall4|direct) ;;
@@ -127,6 +130,16 @@ validate_settings() {
 		0|1) ;;
 		*) echo "invalid dnsmasq upstream setting: $dnsmasq_upstream"; return 1 ;;
 	esac
+	case "$system_log" in
+		0|1) ;;
+		*) echo "invalid system log setting: $system_log"; return 1 ;;
+	esac
+	if [ "$system_log" = "0" ]; then
+		case "$runtime_log_file" in
+			/*) ;;
+			*) echo "Xray runtime log path must be absolute: $runtime_log_file"; return 1 ;;
+		esac
+	fi
 	valid_uint_range "$dnsmasq_xray_port" 1 65535 || {
 		echo "invalid Xray DNS inbound port: $dnsmasq_xray_port"
 		return 1
@@ -702,9 +715,10 @@ dnsmasq_status() {
 start_service() {
 	[ "$(uci_get enabled 0)" = "1" ] || return 0
 
-	local xray_bin system_log stale_pids
+	local xray_bin system_log runtime_log_file stale_pids
 	xray_bin="$(uci_get xray_bin /usr/bin/xray)"
 	system_log="$(uci_get system_log 1)"
+	runtime_log_file="$(uci_get runtime_log_file "${RUNDIR}/xray.log")"
 	command -v "$xray_bin" >/dev/null 2>&1 || {
 		echo "xray binary not found: $xray_bin"
 		return 1
@@ -731,7 +745,13 @@ start_service() {
 	}
 	procd_open_instance
 	procd_set_param respawn
-	procd_set_param command "$xray_bin" run -confdir "$RUNDIR"
+	if [ "$system_log" = "1" ]; then
+		procd_set_param command "$xray_bin" run -confdir "$RUNDIR"
+	else
+		mkdir -p "$(dirname "$runtime_log_file")" || return 1
+		: >"$runtime_log_file" || return 1
+		procd_set_param command "$XRAY_LOG_WRAPPER" "$runtime_log_file" "$xray_bin" run -confdir "$RUNDIR"
+	fi
 	procd_set_param env XRAY_LOCATION_ASSET="$(uci_get asset_dir /usr/share/xray)"
 	if [ "$system_log" = "1" ]; then
 		procd_set_param stdout 1
@@ -867,7 +887,13 @@ terminate_xray_processes() {
 
 # 过滤系统日志，获取最近 100 条与 xray 相关的日志信息。
 recent_xray_logs() {
-	logread 2>/dev/null | grep -iE "xray|xray_simple|xray-simple" | tail -100 || true
+	local runtime_log_file
+	if [ "$(uci_get system_log 1)" = "1" ]; then
+		logread 2>/dev/null | grep -iE "xray|xray_simple|xray-simple" | tail -100 || true
+	else
+		runtime_log_file="$(uci_get runtime_log_file "${RUNDIR}/xray.log")"
+		tail -100 "$runtime_log_file" 2>/dev/null || true
+	fi
 }
 
 # 启动服务后延迟 2 秒并检验进程是否成功驻留。如果失败则输出报错详情和最近日志。

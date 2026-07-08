@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "$0")/.." && pwd)"
-runtime_dir="$(mktemp -d)"
+runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/xray-simple-test.XXXXXX")"
 trap 'rc=$?; rm -rf "$runtime_dir"; exit "$rc"' EXIT
 
 extra_command() { :; }
@@ -27,6 +27,8 @@ cfg_mark=1
 cfg_outbound_mark=255
 cfg_dnsmasq=0
 cfg_dnsmasq_port=5353
+cfg_system_log=1
+cfg_runtime_log_file="$RUNDIR/xray.log"
 
 uci_get() {
 	case "$1" in
@@ -39,6 +41,8 @@ uci_get() {
 		proxy_lan_dns) echo 1 ;;
 		dnsmasq_upstream) echo "$cfg_dnsmasq" ;;
 		dnsmasq_xray_port) echo "$cfg_dnsmasq_port" ;;
+		system_log) echo "$cfg_system_log" ;;
+		runtime_log_file) echo "$cfg_runtime_log_file" ;;
 		proxy_router_output) echo 1 ;;
 		*) echo "${2:-}" ;;
 	esac
@@ -96,6 +100,18 @@ fi
 grep -Fq 'conflicts with dnsmasq' "$RUNDIR/dnsmasq-port.out"
 cfg_dnsmasq_port=5353
 cfg_dnsmasq=0
+
+printf 'private runtime log\n' >"$cfg_runtime_log_file"
+cfg_system_log=0
+recent_xray_logs | grep -Fq 'private runtime log'
+cfg_runtime_log_file=relative.log
+if validate_settings >"$RUNDIR/relative-log.out" 2>&1; then
+	echo 'relative runtime log path validation unexpectedly succeeded' >&2
+	exit 1
+fi
+grep -Fq 'must be absolute' "$RUNDIR/relative-log.out"
+cfg_runtime_log_file="$RUNDIR/xray.log"
+cfg_system_log=1
 
 cfg_mode=firewall4
 write_nft

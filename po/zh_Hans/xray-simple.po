@@ -56,8 +56,17 @@ msgstr "启用 Xray Simple"
 msgid "Write Xray output to system log"
 msgstr "将 Xray 输出写入系统日志"
 
-msgid "Send Xray stdout and stderr to the OpenWrt system log. Restart Xray after changing this setting."
-msgstr "将 Xray 的标准输出和错误输出写入 OpenWrt 系统日志。修改此设置后需要重启 Xray。"
+msgid "Xray runtime log file"
+msgstr "Xray 运行日志文件"
+
+msgid "Absolute path used when system log output is disabled."
+msgstr "关闭系统日志输出时使用的绝对路径。"
+
+msgid "The runtime log path must be absolute."
+msgstr "运行日志路径必须是绝对路径。"
+
+msgid "When enabled, send Xray stdout and stderr to the OpenWrt system log. When disabled, keep them only in the Xray runtime log tab. Restart Xray after changing this setting."
+msgstr "启用时将 Xray 的标准输出和错误输出写入 OpenWrt 系统日志；关闭时仅保留在 Xray 运行日志标签页中。修改此设置后需要重启 Xray。"
 
 msgid "Export profile"
 msgstr "导出配置"

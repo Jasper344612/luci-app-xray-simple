@@ -14,7 +14,8 @@ The app intentionally keeps Xray configuration user-owned: you edit and switch f
 - TProxy rule generation for `firewall4` include mode or direct `nft` mode.
 - LAN interface selection, bypass IPv4/IPv6 CIDR lists, bypass UID/GID, policy mark and route table settings.
 - nftables status view with generated rule preview.
-- Optional forwarding of Xray stdout/stderr to the OpenWrt system log.
+- Xray runtime logs remain available in LuCI, with optional forwarding to the OpenWrt system log.
+- The private runtime log path is configurable and defaults to `/var/etc/xray-simple/xray.log`.
 - Optional dnsmasq frontend with a local Xray DNS inbound as its upstream.
 - Geo database reminder for `geoip.dat` and `geosite.dat`.
 - Optional Chinese translation package: `luci-app-xray-simple-zh`.
