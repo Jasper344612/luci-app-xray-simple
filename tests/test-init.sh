@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "$0")/.." && pwd)"
-runtime_dir="$(mktemp -d)"
+runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/xray-simple-test.XXXXXX")"
 trap 'rc=$?; rm -rf "$runtime_dir"; exit "$rc"' EXIT
 
 extra_command() { :; }
@@ -16,7 +16,6 @@ ROUTE_STATE="$RUNDIR/route.state"
 ASYNC_STATUS="$RUNDIR/last_command.status"
 ASYNC_LOG="$RUNDIR/last_command.log"
 ASYNC_LOCK="$RUNDIR/command.lock"
-XRAY_TEST_MODE="$RUNDIR/xray-test-mode"
 DNSMASQ_STATE="$RUNDIR/dnsmasq-fragments"
 DNSMASQ_CONFIG_GLOB="$RUNDIR/generated-dnsmasq.conf.*"
 DNSMASQ_RUNTIME_GLOB="$RUNDIR/dnsmasq*.d"
@@ -28,6 +27,8 @@ cfg_mark=1
 cfg_outbound_mark=255
 cfg_dnsmasq=0
 cfg_dnsmasq_port=5353
+cfg_system_log=1
+cfg_runtime_log_file="$RUNDIR/xray.log"
 
 uci_get() {
 	case "$1" in
@@ -40,6 +41,8 @@ uci_get() {
 		proxy_lan_dns) echo 1 ;;
 		dnsmasq_upstream) echo "$cfg_dnsmasq" ;;
 		dnsmasq_xray_port) echo "$cfg_dnsmasq_port" ;;
+		system_log) echo "$cfg_system_log" ;;
+		runtime_log_file) echo "$cfg_runtime_log_file" ;;
 		proxy_router_output) echo 1 ;;
 		*) echo "${2:-}" ;;
 	esac
@@ -69,6 +72,7 @@ fi
 cfg_dnsmasq=1
 write_nft
 grep -Fq 'chain xray_simple_dns_prerouting' "$direct_rules"
+grep -Fq 'type nat hook prerouting priority mangle - 1; policy accept;' "$direct_rules"
 grep -Fq 'iifname { "br-lan" } udp dport 53 redirect to :53' "$direct_rules"
 if grep -Fq 'udp dport != 53' "$direct_rules"; then
 	echo 'dnsmasq mode unexpectedly retained direct UDP/53 TProxy rules' >&2
@@ -96,6 +100,18 @@ fi
 grep -Fq 'conflicts with dnsmasq' "$RUNDIR/dnsmasq-port.out"
 cfg_dnsmasq_port=5353
 cfg_dnsmasq=0
+
+printf 'private runtime log\n' >"$cfg_runtime_log_file"
+cfg_system_log=0
+recent_xray_logs | grep -Fq 'private runtime log'
+cfg_runtime_log_file=relative.log
+if validate_settings >"$RUNDIR/relative-log.out" 2>&1; then
+	echo 'relative runtime log path validation unexpectedly succeeded' >&2
+	exit 1
+fi
+grep -Fq 'must be absolute' "$RUNDIR/relative-log.out"
+cfg_runtime_log_file="$RUNDIR/xray.log"
+cfg_system_log=1
 
 cfg_mode=firewall4
 write_nft
@@ -136,33 +152,6 @@ for table in 0 253 254 255; do
 	fi
 done
 
-cfg_xray_valid=1
-xray_env() {
-	if [ "$2" = test ]; then
-		echo "xray test: unknown command"
-		return 1
-	fi
-	if [ "$cfg_xray_valid" = 1 ]; then
-		echo "Configuration OK"
-		return 0
-	fi
-	echo "invalid Xray configuration"
-	return 1
-}
-
-xray_test_confdir /usr/bin/xray "$RUNDIR" >/dev/null
-test "$(cat "$XRAY_TEST_MODE")" = '/usr/bin/xray run'
-cfg_xray_valid=0
-if xray_test_confdir /usr/bin/xray "$RUNDIR" >"$RUNDIR/xray-error.out"; then
-	echo 'invalid Xray configuration unexpectedly succeeded' >&2
-	exit 1
-fi
-grep -Fq 'invalid Xray configuration' "$RUNDIR/xray-error.out"
-if grep -Fq 'unknown command' "$RUNDIR/xray-error.out"; then
-	echo 'cached Xray test mode was not reused' >&2
-	exit 1
-fi
-
 ip_calls="$RUNDIR/ip.calls"
 ip() {
 	printf '%s\n' "$*" >>"$ip_calls"
@@ -198,5 +187,35 @@ for _ in $(seq 1 20); do
 	sleep 0.05
 done
 test ! -e "$ASYNC_LOCK"
+
+pid_state="$RUNDIR/xray-pid-state"
+xray_pids() {
+	local remaining
+	remaining="$(cat "$pid_state")"
+	if [ "$remaining" -gt 0 ]; then
+		echo 4242
+		echo $((remaining - 1)) >"$pid_state"
+	fi
+}
+echo 1 >"$pid_state"
+wait_for_xray_exit 2
+test "$(cat "$pid_state")" = 0
+
+kill_calls="$RUNDIR/kill.calls"
+kill() {
+	printf '%s\n' "$*" >>"$kill_calls"
+	echo 0 >"$pid_state"
+}
+echo 2 >"$pid_state"
+terminate_xray_processes
+grep -Fq '4242' "$kill_calls"
+
+reload_order="$RUNDIR/reload.order"
+stop() { echo stop >>"$reload_order"; }
+start() { echo start >>"$reload_order"; }
+echo 0 >"$pid_state"
+reload_service
+test "$(sed -n '1p' "$reload_order")" = stop
+test "$(sed -n '2p' "$reload_order")" = start
 
 echo 'init script regression tests: OK'

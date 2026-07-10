@@ -65,6 +65,8 @@ define Package/$(PKG_NAME)/install
 	$(INSTALL_DATA) ./root/etc/config/xray_simple $(1)/etc/config/xray_simple
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./root/etc/init.d/xray_simple $(1)/etc/init.d/xray_simple
+	$(INSTALL_DIR) $(1)/usr/libexec
+	$(INSTALL_BIN) ./root/usr/libexec/xray-simple-run $(1)/usr/libexec/xray-simple-run
 	$(INSTALL_DIR) $(1)/etc/uci-defaults
 	$(INSTALL_BIN) ./root/etc/uci-defaults/xray_simple $(1)/etc/uci-defaults/xray_simple
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d

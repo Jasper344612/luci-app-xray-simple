@@ -11,11 +11,11 @@ The app intentionally keeps Xray configuration user-owned: you edit and switch f
 - Three LuCI tabs: system settings, process management, and runtime logs.
 - Multiple JSON profiles with one-click switch and restart.
 - Import/export profile JSON.
-- Xray config validation using the installed Xray binary.
 - TProxy rule generation for `firewall4` include mode or direct `nft` mode.
 - LAN interface selection, bypass IPv4/IPv6 CIDR lists, bypass UID/GID, policy mark and route table settings.
 - nftables status view with generated rule preview.
-- Optional forwarding of Xray stdout/stderr to the OpenWrt system log.
+- Xray runtime logs remain available in LuCI, with optional forwarding to the OpenWrt system log.
+- The private runtime log path is configurable and defaults to `/var/etc/xray-simple/xray.log`.
 - Optional dnsmasq frontend with a local Xray DNS inbound as its upstream.
 - Geo database reminder for `geoip.dat` and `geosite.dat`.
 - Optional Chinese translation package: `luci-app-xray-simple-zh`.
@@ -52,7 +52,7 @@ The default Xray asset directory is:
 /usr/share/xray
 ```
 
-`xray_simple` sets `XRAY_LOCATION_ASSET` to this directory when validating and running Xray. You can change the directory in LuCI under **System Settings -> Xray asset directory**.
+`xray_simple` sets `XRAY_LOCATION_ASSET` to this directory when running Xray. You can change the directory in LuCI under **System Settings -> Xray asset directory**.
 
 ## Installation
 
@@ -193,7 +193,6 @@ Use this mode only when you want `xray_simple` to manage its own nft table outsi
 /etc/init.d/xray_simple stop
 /etc/init.d/xray_simple restart
 /etc/init.d/xray_simple status
-/etc/init.d/xray_simple test_config
 /etc/init.d/xray_simple nft_status
 /etc/init.d/xray_simple geodata_status
 /etc/init.d/xray_simple recent_xray_logs

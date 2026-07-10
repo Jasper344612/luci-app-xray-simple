@@ -15,7 +15,7 @@ ROUTE_STATE="${RUNDIR}/route.state"
 ASYNC_STATUS="${RUNDIR}/last_command.status"
 ASYNC_LOG="${RUNDIR}/last_command.log"
 ASYNC_LOCK="${RUNDIR}/command.lock"
-XRAY_TEST_MODE="${RUNDIR}/xray-test-mode"
+XRAY_LOG_WRAPPER=/usr/libexec/xray-simple-run
 DNSMASQ_STATE="${RUNDIR}/dnsmasq-fragments"
 DNSMASQ_CONFIG_GLOB="${DNSMASQ_CONFIG_GLOB:-/var/etc/dnsmasq.conf.*}"
 DNSMASQ_RUNTIME_GLOB="${DNSMASQ_RUNTIME_GLOB:-/tmp/dnsmasq*.d}"
@@ -78,83 +78,6 @@ profile_get() {
 	uci -q get "${NAME}.${section}.${option}"
 }
 
-# 为 Xray 运行环境设置资源目录环境变量，并在该环境下执行传入的命令
-# $1及之后: 待运行的 xray 命令及参数
-xray_env() {
-	local asset_dir
-	asset_dir="$(uci_get asset_dir /usr/share/xray)"
-	# Xray reads geoip.dat/geosite.dat from XRAY_LOCATION_ASSET; keep validation
-	# and runtime behavior identical by setting it for every xray invocation.
-	XRAY_LOCATION_ASSET="$asset_dir" "$@"
-}
-
-# Run Xray configuration validation using the CLI form supported by the
-# installed binary. Cache the successful form to avoid one failed process
-# launch per profile on older OpenWrt Xray packages.
-xray_test_confdir() {
-	local xray_bin="$1"
-	local confdir="$2"
-	local cached_bin="" mode="" output="" first_output="" first_rc=1
-
-	if [ -s "$XRAY_TEST_MODE" ]; then
-		read -r cached_bin mode <"$XRAY_TEST_MODE"
-	fi
-	if [ "$cached_bin" = "$xray_bin" ]; then
-		case "$mode" in
-			test)
-				if output="$(xray_env "$xray_bin" test -confdir "$confdir" 2>&1)"; then
-					first_rc=0
-				else
-					first_rc="$?"
-				fi
-				printf '%s\n' "$output"
-				return "$first_rc"
-			;;
-			run)
-				if output="$(xray_env "$xray_bin" run -test -confdir "$confdir" 2>&1)"; then
-					first_rc=0
-				else
-					first_rc="$?"
-				fi
-				printf '%s\n' "$output"
-				return "$first_rc"
-			;;
-		esac
-	fi
-
-	for mode in test run; do
-		if [ "$mode" = "test" ]; then
-			if output="$(xray_env "$xray_bin" test -confdir "$confdir" 2>&1)"; then
-				first_rc=0
-			else
-				first_rc="$?"
-			fi
-		else
-			if output="$(xray_env "$xray_bin" run -test -confdir "$confdir" 2>&1)"; then
-				first_rc=0
-			else
-				first_rc="$?"
-			fi
-		fi
-		if [ "$first_rc" = "0" ]; then
-			mkdir -p "$RUNDIR"
-			printf '%s %s\n' "$xray_bin" "$mode" >"$XRAY_TEST_MODE"
-			printf '%s\n' "$output"
-			return 0
-		fi
-		if [ "$mode" = "test" ]; then
-			first_output="$output"
-		fi
-	done
-
-	case "$first_output" in
-		*"unknown command"*|*"unknown subcommand"*|*"Run 'xray help'"*) ;;
-		*) output="$first_output" ;;
-	esac
-	printf '%s\n' "$output"
-	return 1
-}
-
 # 将十进制的策略路由防火墙标记数值转换为 8 位十六进制表示 (例如 1 -> 0x00000001)
 # $1: 十进制标记数值
 mark_hex() {
@@ -181,7 +104,7 @@ valid_route_table() {
 
 validate_settings() {
 	local nft_mode tproxy_port mark outbound_mark table_v4 table_v6 item lan_ifaces
-	local dnsmasq_upstream dnsmasq_xray_port
+	local dnsmasq_upstream dnsmasq_xray_port system_log runtime_log_file
 
 	nft_mode="$(uci_get nft_mode firewall4)"
 	tproxy_port="$(uci_get tproxy_port 12345)"
@@ -192,6 +115,8 @@ validate_settings() {
 	lan_ifaces="$(uci_list lan_ifaces)"
 	dnsmasq_upstream="$(uci_get dnsmasq_upstream 0)"
 	dnsmasq_xray_port="$(uci_get dnsmasq_xray_port 5353)"
+	system_log="$(uci_get system_log 1)"
+	runtime_log_file="$(uci_get runtime_log_file "${RUNDIR}/xray.log")"
 
 	case "$nft_mode" in
 		firewall4|direct) ;;
@@ -205,6 +130,16 @@ validate_settings() {
 		0|1) ;;
 		*) echo "invalid dnsmasq upstream setting: $dnsmasq_upstream"; return 1 ;;
 	esac
+	case "$system_log" in
+		0|1) ;;
+		*) echo "invalid system log setting: $system_log"; return 1 ;;
+	esac
+	if [ "$system_log" = "0" ]; then
+		case "$runtime_log_file" in
+			/*) ;;
+			*) echo "Xray runtime log path must be absolute: $runtime_log_file"; return 1 ;;
+		esac
+	fi
 	valid_uint_range "$dnsmasq_xray_port" 1 65535 || {
 		echo "invalid Xray DNS inbound port: $dnsmasq_xray_port"
 		return 1
@@ -382,7 +317,9 @@ write_nft() {
 	if [ "$dnsmasq_upstream" = "1" ]; then
 		cat >> "$NFT_FILE" <<-EOF
 	    chain xray_simple_dns_prerouting {
-	        type nat hook prerouting priority dstnat - 1; policy accept;
+	        # Run before the TProxy chain (mangle + 10 = -140), including
+	        # when a LAN client sends DNS directly to an external resolver.
+	        type nat hook prerouting priority mangle - 1; policy accept;
 
 	        ${lan_match}udp dport 53 redirect to :53
 	    }
@@ -778,19 +715,22 @@ dnsmasq_status() {
 start_service() {
 	[ "$(uci_get enabled 0)" = "1" ] || return 0
 
-	local xray_bin system_log
+	local xray_bin system_log runtime_log_file stale_pids
 	xray_bin="$(uci_get xray_bin /usr/bin/xray)"
 	system_log="$(uci_get system_log 1)"
+	runtime_log_file="$(uci_get runtime_log_file "${RUNDIR}/xray.log")"
 	command -v "$xray_bin" >/dev/null 2>&1 || {
 		echo "xray binary not found: $xray_bin"
 		return 1
 	}
+	stale_pids="$(xray_pids)"
+	if [ -n "$stale_pids" ]; then
+		echo "stale Xray Simple process found before start: $stale_pids"
+		terminate_xray_processes || return 1
+	fi
 
 	modprobe nft_tproxy 2>/dev/null
 	write_config
-	if [ "${XRAY_CONFIG_VALIDATED:-0}" != "1" ]; then
-		test_json_file "$xray_bin" "${RUNDIR}/config.json" || return 1
-	fi
 	write_nft || return 1
 	setup_routes || {
 		flush_routes
@@ -805,7 +745,13 @@ start_service() {
 	}
 	procd_open_instance
 	procd_set_param respawn
-	procd_set_param command "$xray_bin" run -confdir "$RUNDIR"
+	if [ "$system_log" = "1" ]; then
+		procd_set_param command "$xray_bin" run -confdir "$RUNDIR"
+	else
+		mkdir -p "$(dirname "$runtime_log_file")" || return 1
+		: >"$runtime_log_file" || return 1
+		procd_set_param command "$XRAY_LOG_WRAPPER" "$runtime_log_file" "$xray_bin" run -confdir "$RUNDIR"
+	fi
 	procd_set_param env XRAY_LOCATION_ASSET="$(uci_get asset_dir /usr/share/xray)"
 	if [ "$system_log" = "1" ]; then
 		procd_set_param stdout 1
@@ -850,19 +796,20 @@ stop_tproxy() {
 	echo "Xray Simple TProxy rules stopped."
 }
 
-# 重载服务。先校验新配置，停止进程时保留旧 TProxy，启动阶段只重载一次防火墙。
+# 重载服务。先停止旧 Xray 并确认退出，再启动新配置。
 reload_service() {
 	local rc
-	test_config || return 1
 	export RELOAD_KEEP_TPROXY=1
 	stop
 	rc="$?"
 	unset RELOAD_KEEP_TPROXY
 	[ "$rc" = "0" ] || return "$rc"
-	export XRAY_CONFIG_VALIDATED=1
+	if ! wait_for_xray_exit 10; then
+		echo "Xray did not exit after procd stop; terminating stale process"
+		terminate_xray_processes || return 1
+	fi
 	start
 	rc="$?"
-	unset XRAY_CONFIG_VALIDATED
 	[ "$rc" = "0" ] || {
 		restore_dnsmasq_upstream || true
 		flush_firewall
@@ -909,18 +856,60 @@ xray_pids() {
 	ps w 2>/dev/null | awk -v xray_bin="$xray_bin" '$5 == xray_bin && index($0, " run ") && index($0, "confdir /var/etc/xray-simple") { printf "%s%s", sep, $1; sep = " " }'
 }
 
+# Wait until all Xray processes managed by this service have exited. procd stop
+# is asynchronous on some builds, so starting the replacement immediately can
+# otherwise leave two memory-heavy Xray processes alive at once.
+wait_for_xray_exit() {
+	local timeout="${1:-10}"
+	while [ "$timeout" -gt 0 ]; do
+		[ -z "$(xray_pids)" ] && return 0
+		sleep 1
+		timeout=$((timeout - 1))
+	done
+	[ -z "$(xray_pids)" ]
+}
+
+# Terminate only instances whose command line points at Xray Simple's runtime
+# confdir. Other Xray processes on the router are deliberately left alone.
+terminate_xray_processes() {
+	local pids
+	pids="$(xray_pids)"
+	[ -n "$pids" ] || return 0
+	kill $pids 2>/dev/null || true
+	wait_for_xray_exit 5 && return 0
+	pids="$(xray_pids)"
+	[ -n "$pids" ] && kill -9 $pids 2>/dev/null
+	wait_for_xray_exit 2 || {
+		echo "failed to terminate stale Xray Simple process: $(xray_pids)"
+		return 1
+	}
+}
+
 # 过滤系统日志，获取最近 100 条与 xray 相关的日志信息。
 recent_xray_logs() {
-	logread 2>/dev/null | grep -iE "xray|xray_simple|xray-simple" | tail -100 || true
+	local runtime_log_file
+	if [ "$(uci_get system_log 1)" = "1" ]; then
+		logread 2>/dev/null | grep -iE "xray|xray_simple|xray-simple" | tail -100 || true
+	else
+		runtime_log_file="$(uci_get runtime_log_file "${RUNDIR}/xray.log")"
+		tail -100 "$runtime_log_file" 2>/dev/null || true
+	fi
 }
 
 # 启动服务后延迟 2 秒并检验进程是否成功驻留。如果失败则输出报错详情和最近日志。
 assert_running() {
-	local pids
+	local pids count
 
 	sleep 2
 	pids="$(xray_pids)"
 	if [ -n "$pids" ]; then
+		set -- $pids
+		count="$#"
+		if [ "$count" -ne 1 ]; then
+			echo "Xray Simple start failed: expected one managed Xray process, found ${count}: ${pids}"
+			terminate_xray_processes || true
+			return 1
+		fi
 		echo "Xray Simple running, pid ${pids}"
 		return 0
 	fi
@@ -929,60 +918,6 @@ assert_running() {
 	echo
 	echo "Recent Xray logs:"
 	recent_xray_logs
-	return 1
-}
-
-# 命令行自定义命令：测试并校验当前生成的运行期 Xray JSON 配置文件格式是否正确。
-test_config() {
-	local xray_bin
-	xray_bin="$(uci_get xray_bin /usr/bin/xray)"
-	command -v "$xray_bin" >/dev/null 2>&1 || {
-		echo "xray binary not found: $xray_bin"
-		return 1
-	}
-	write_config
-	xray_test_confdir "$xray_bin" "$RUNDIR"
-}
-
-# 命令行自定义命令：使用指定的 xray 二进制校验指定的 JSON 配置文件是否正确。
-# 支持在临时目录中加载测试，兼容 new/old xray 命令行校验指令。
-# $1: (可选) xray 可执行文件路径
-# $2: 待校验的 JSON 文件路径
-test_json_file() {
-	local xray_bin="$1"
-	local json_file="$2"
-	local test_dir output
-
-	if [ -z "$json_file" ]; then
-		json_file="$xray_bin"
-		xray_bin="$(uci_get xray_bin /usr/bin/xray)"
-	fi
-	command -v "$xray_bin" >/dev/null 2>&1 || {
-		echo "xray binary not found: $xray_bin"
-		return 1
-	}
-	[ -s "$json_file" ] || {
-		echo "JSON file is empty or missing: $json_file"
-		return 1
-	}
-
-	test_dir="/tmp/xray-simple-test.$$"
-	mkdir -p "$test_dir" || return 1
-	cp "$json_file" "${test_dir}/config.json" || {
-		rm -rf "$test_dir"
-		return 1
-	}
-	[ "$json_file" != "/tmp/xray-simple-import.json" ] || rm -f "$json_file"
-
-	output="$(xray_test_confdir "$xray_bin" "$test_dir" 2>&1)"
-	if [ "$?" = "0" ]; then
-		rm -rf "$test_dir"
-		printf "%s\n" "$output"
-		return 0
-	fi
-
-	rm -rf "$test_dir"
-	printf "%s\n" "$output"
 	return 1
 }
 
@@ -1162,6 +1097,7 @@ stop_now() {
 	uci set "${NAME}.@general[0].enabled=0"
 	uci commit "$NAME"
 	stop
+	wait_for_xray_exit 10 || terminate_xray_processes || return 1
 	echo "Xray Simple stopped and disabled in Xray Simple settings."
 }
 
@@ -1248,8 +1184,6 @@ async_status() {
 	cat "$ASYNC_LOG" 2>/dev/null || echo "no async command log"
 }
 
-extra_command "test_config" "Validate active Xray JSON configuration"
-extra_command "test_json_file" "Validate a JSON config file"
 extra_command "nft_status" "Show nftables and policy routing status"
 extra_command "geodata_status" "Show Xray geo database status"
 extra_command "dnsmasq_status" "Show dnsmasq upstream integration status"
