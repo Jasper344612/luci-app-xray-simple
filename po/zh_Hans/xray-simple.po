@@ -343,3 +343,27 @@ msgstr "直接加载 nft"
 
 msgid "firewall4 include"
 msgstr "firewall4 include"
+
+msgid "Automatically proxy Xray FakeDNS pools"
+msgstr "自动代理 Xray FakeDNS 地址池"
+
+msgid "Extract IPv4 and IPv6 ipPool values from fakedns in the active Xray JSON and force them through TProxy before private-address and bypass rules."
+msgstr "从当前 Xray JSON 的 fakedns 中提取 IPv4 和 IPv6 ipPool，并在私有地址和绕过规则之前强制通过 TProxy。"
+
+msgid "Extract IPv4 and IPv6 ipPool values from fakedns in the active Xray JSON and force them through TProxy before private-address and bypass rules. If this is disabled while FakeDNS is in use, add every FakeDNS pool to the additional proxied IPv4/IPv6 lists manually."
+msgstr "从当前 Xray JSON 的 fakedns 中提取 IPv4 和 IPv6 ipPool，并在私有地址和绕过规则之前强制通过 TProxy。如果使用 FakeDNS 时关闭此选项，必须手动将所有 FakeDNS 地址池加入补充劫持 IPv4/IPv6 列表。"
+
+msgid "Let dnsmasq built-in DNS hijacking receive LAN UDP/53 and use the local Xray DNS inbound as upstream. This requires dnsmasq DNS redirect to be enabled. Restart Xray after changing this setting."
+msgstr "让 dnsmasq 自带的 DNS 劫持接收 LAN UDP/53，并使用本地 Xray DNS 入站作为上游。此功能要求启用 dnsmasq DNS 重定向。修改后请重启 Xray。"
+
+msgid "Additional proxied IPv4/CIDR"
+msgstr "补充劫持 IPv4/CIDR"
+
+msgid "Always send these IPv4 ranges through Xray. They are merged with automatically detected FakeDNS pools and take priority over bypass ranges."
+msgstr "始终将这些 IPv4 网段交给 Xray。它们会与自动检测的 FakeDNS 地址池合并，并优先于绕过网段。"
+
+msgid "Additional proxied IPv6/CIDR"
+msgstr "补充劫持 IPv6/CIDR"
+
+msgid "Always send these IPv6 ranges through Xray. They are merged with automatically detected FakeDNS pools and take priority over ULA and bypass ranges."
+msgstr "始终将这些 IPv6 网段交给 Xray。它们会与自动检测的 FakeDNS 地址池合并，并优先于 ULA 和绕过网段。"

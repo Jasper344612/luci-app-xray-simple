@@ -13,6 +13,7 @@ The app intentionally keeps Xray configuration user-owned: you edit and switch f
 - Import/export profile JSON.
 - TProxy rule generation for `firewall4` include mode or direct `nft` mode.
 - LAN interface selection, bypass IPv4/IPv6 CIDR lists, bypass UID/GID, policy mark and route table settings.
+- Automatic extraction of Xray `fakedns[].ipPool` plus manual forced-proxy IPv4/IPv6 CIDRs.
 - nftables status view with generated rule preview.
 - Xray runtime logs remain available in LuCI, with optional forwarding to the OpenWrt system log.
 - The private runtime log path is configurable and defaults to `/var/etc/xray-simple/xray.log`.
@@ -141,13 +142,22 @@ IPv4 link-local, IPv6 link-local, and IPv6 multicast destinations are also
 bypassed. At least one valid LAN interface is required; an empty interface list
 never falls back to intercepting every ingress interface.
 
+**Automatically proxy Xray FakeDNS pools** is enabled by default. At startup,
+the service extracts IPv4 and IPv6 `fakedns[].ipPool` values from the active
+materialized JSON and merges them with the manually configured additional
+proxied CIDRs. The generated `proxy_ipv4` and `proxy_ipv6` nft sets are handled
+before private, ULA, and user bypass rules, so pools such as `198.18.0.0/15` and
+`fc00::/18` are always delivered to Xray. Forced-proxy ranges take priority over
+bypass ranges.
+
 When **Proxy LAN DNS UDP/53** is enabled, LAN-side UDP/53 traffic is intercepted before private-range bypass rules. TCP/53 is not intercepted by the DNS-specific rule.
 
 ### dnsmasq upstream mode
 
 When **Use dnsmasq as Xray DNS frontend** is enabled, Xray Simple:
 
-- redirects LAN UDP/53 to the router's dnsmasq;
+- explicitly returns LAN UDP/53 from the earlier TProxy prerouting chain so it cannot enter Xray `all-in`;
+- relies on dnsmasq's later built-in DNS redirect rule to deliver UDP/53 to the local resolver; `dns_redirect=1` must be enabled in `/etc/config/dhcp`;
 - disables the direct UDP/53 TProxy exception;
 - writes a runtime-only dnsmasq fragment using `127.0.0.1:5353` (or the configured port) as upstream;
 - removes the fragment and restarts dnsmasq when Xray stops or fails to start.

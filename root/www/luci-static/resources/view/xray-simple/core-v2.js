@@ -266,7 +266,7 @@ function showDnsmasqModal(sectionId) {
             E('label', { 'class': 'cbi-value-title', 'for': 'dnsmasq_upstream_cb' }, _('Enable dnsmasq upstream')),
             E('div', { 'class': 'cbi-value-field' }, [
                 enabledInput,
-                E('div', { 'class': 'cbi-value-description' }, _('Redirect LAN UDP/53 to dnsmasq and use the local Xray DNS inbound as upstream. Enabling this option automatically disables direct LAN DNS UDP/53 TProxy. Restart Xray after changing this setting.'))
+                E('div', { 'class': 'cbi-value-description' }, _('Let dnsmasq built-in DNS hijacking receive LAN UDP/53 and use the local Xray DNS inbound as upstream. This requires dnsmasq DNS redirect to be enabled. Restart Xray after changing this setting.'))
             ])
         ]),
 
@@ -644,6 +644,20 @@ return view.extend({
         o = s.taboption('system', form.Flag, 'proxy_router_output', _('Proxy router-local traffic'));
         o.default = '1';
         o.rmempty = false;
+
+        o = s.taboption('system', form.Flag, 'fakedns_auto_detect', _('Automatically proxy Xray FakeDNS pools'), _('Extract IPv4 and IPv6 ipPool values from fakedns in the active Xray JSON and force them through TProxy before private-address and bypass rules. If this is disabled while FakeDNS is in use, add every FakeDNS pool to the additional proxied IPv4/IPv6 lists manually.'));
+        o.default = '1';
+        o.rmempty = false;
+
+        o = s.taboption('system', form.DynamicList, 'proxy_ipv4', _('Additional proxied IPv4/CIDR'), _('Always send these IPv4 ranges through Xray. They are merged with automatically detected FakeDNS pools and take priority over bypass ranges.'));
+        o.validate = function (sectionId, value) {
+            return validateCidrList(value, 4);
+        };
+
+        o = s.taboption('system', form.DynamicList, 'proxy_ipv6', _('Additional proxied IPv6/CIDR'), _('Always send these IPv6 ranges through Xray. They are merged with automatically detected FakeDNS pools and take priority over ULA and bypass ranges.'));
+        o.validate = function (sectionId, value) {
+            return validateCidrList(value, 6);
+        };
 
         o = s.taboption('system', form.DynamicList, 'lan_ifaces', _('LAN interfaces'));
         o.placeholder = 'br-lan';

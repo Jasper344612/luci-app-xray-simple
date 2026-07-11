@@ -13,6 +13,7 @@
 - 导入、导出配置 JSON。
 - 支持通过 `firewall4` include 或直接 `nft` 两种模式加载 TProxy 规则。
 - 支持选择 LAN 接口、绕过 IPv4/IPv6 CIDR、UID/GID、策略标记和路由表。
+- 自动提取 Xray `fakedns[].ipPool`，并支持手动补充强制劫持的 IPv4/IPv6 CIDR。
 - 查看 nftables 状态和生成的规则。
 - LuCI 始终提供 Xray 运行日志，并可选择是否同时写入 OpenWrt 系统日志。
 - 私有运行日志路径可以自定义，默认为 `/var/etc/xray-simple/xray.log`。
@@ -102,13 +103,16 @@ LuCI 的“保存并应用”只提交 UCI 设置，不会重启 Xray 或 firewa
 
 规则会绕过 `10.0.0.0/8`、`172.16.0.0/12`、`192.168.0.0/16` 和 IPv6 ULA `fc00::/7`，并绕过 IPv4 link-local、IPv6 link-local 和 IPv6 multicast 目的地址。
 
+默认启用 **自动代理 Xray FakeDNS 地址池**。服务启动时会从当前 profile 物化出的 JSON 中提取 `fakedns[].ipPool`（IPv4 和 IPv6），与 **补充劫持 IPv4/IPv6 CIDR** 合并后生成 `proxy_ipv4`、`proxy_ipv6` nft 集合。这些强制代理规则位于私网、ULA 和用户 bypass 规则之前，因此例如 `198.18.0.0/15` 与 `fc00::/18` 均会进入 Xray。手动强制代理网段同样优先于 bypass 网段。
+
 必须至少配置一个有效 LAN 接口；接口列表为空时不会退化为拦截所有入站接口。启用 **代理 LAN DNS UDP/53** 后，来自 LAN 的 UDP/53 流量会在私有地址绕过规则之前被捕获。DNS 专用规则不会捕获 TCP/53。
 
 ### dnsmasq 上游模式
 
 启用 **使用 dnsmasq 作为 Xray DNS 前端** 后，Xray Simple 会：
 
-- 将 LAN UDP/53 重定向到路由器上的 dnsmasq；
+- 在较早执行的 TProxy prerouting 链中明确放行 LAN UDP/53，防止它进入 Xray `all-in`；
+- 使用 dnsmasq 自带且优先级更靠后的 DNS 劫持规则将 UDP/53 重定向到本机；此模式要求 `/etc/config/dhcp` 中启用 `dns_redirect=1`；
 - 关闭 UDP/53 直接进入 TProxy 的例外规则；
 - 生成仅在运行期间有效的 dnsmasq 配置片段，将 `127.0.0.1:5353`（或用户配置的端口）设为上游；
 - 在 Xray 停止或启动失败时删除该片段并重启 dnsmasq，恢复原有上游。

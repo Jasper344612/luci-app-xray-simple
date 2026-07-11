@@ -14,6 +14,7 @@ config general
 	option dnsmasq_upstream '0'
 	option dnsmasq_xray_port '5353'
 	option proxy_router_output '1'
+	option fakedns_auto_detect '1'
 	option active_profile ''
 	list lan_ifaces 'br-lan'
 

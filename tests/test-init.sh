@@ -29,6 +29,7 @@ cfg_dnsmasq=0
 cfg_dnsmasq_port=5353
 cfg_system_log=1
 cfg_runtime_log_file="$RUNDIR/xray.log"
+cfg_fakedns_auto=1
 
 uci_get() {
 	case "$1" in
@@ -43,6 +44,7 @@ uci_get() {
 		dnsmasq_xray_port) echo "$cfg_dnsmasq_port" ;;
 		system_log) echo "$cfg_system_log" ;;
 		runtime_log_file) echo "$cfg_runtime_log_file" ;;
+		fakedns_auto_detect) echo "$cfg_fakedns_auto" ;;
 		proxy_router_output) echo 1 ;;
 		*) echo "${2:-}" ;;
 	esac
@@ -55,8 +57,31 @@ uci_list() {
 		bypass_ipv6) echo "2001:db8::/32" ;;
 		bypass_uids) echo "0 65534" ;;
 		bypass_gids) echo "1000" ;;
+		proxy_ipv4) echo "100.64.0.0/10" ;;
+		proxy_ipv6) echo "fd00:1234::/48" ;;
 	esac
 }
+
+mkdir -p "$RUNDIR"
+cat >"$RUNDIR/config.json" <<'EOF'
+{
+  "fakedns": [
+    { "ipPool": "198.18.0.0/15", "poolSize": 65535 },
+    {
+      "ipPool":
+        "fc00::/18",
+      "poolSize": 65535
+    }
+  ]
+}
+EOF
+
+test "$(proxy_ranges | sed -n '1p')" = '100.64.0.0/10 198.18.0.0/15'
+test "$(proxy_ranges | sed -n '2p')" = 'fd00:1234::/48 fc00::/18'
+cfg_fakedns_auto=0
+test "$(proxy_ranges | sed -n '1p')" = '100.64.0.0/10'
+test "$(proxy_ranges | sed -n '2p')" = 'fd00:1234::/48'
+cfg_fakedns_auto=1
 
 write_nft
 direct_rules="$RUNDIR/direct_xray_simple.nft"
@@ -64,6 +89,10 @@ grep -Fq 'table inet xray_simple' "$direct_rules"
 grep -Fq 'iifname { "br-lan" } meta l4proto { tcp, udp }' "$direct_rules"
 grep -Fq 'ip daddr { 10.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16 } udp dport != 53 return' "$direct_rules"
 grep -Fq 'ip6 daddr { ::1/128, fe80::/10, ff00::/8 } return' "$direct_rules"
+grep -Fq 'elements = { 100.64.0.0/10, 198.18.0.0/15 }' "$direct_rules"
+grep -Fq 'elements = { fd00:1234::/48, fc00::/18 }' "$direct_rules"
+grep -Fq 'ip6 daddr @proxy_ipv6 meta l4proto { tcp, udp } meta mark set 0x00000001 tproxy ip6' "$direct_rules"
+test "$(grep -nF 'ip6 daddr @proxy_ipv6' "$direct_rules" | head -n1 | cut -d: -f1)" -lt "$(grep -nF 'ip6 daddr fc00::/7 return' "$direct_rules" | head -n1 | cut -d: -f1)"
 if grep -Fq 'tcp dport != 53' "$direct_rules"; then
 	echo 'TCP/53 must not receive the DNS-specific exception' >&2
 	exit 1
@@ -71,9 +100,12 @@ fi
 
 cfg_dnsmasq=1
 write_nft
-grep -Fq 'chain xray_simple_dns_prerouting' "$direct_rules"
-grep -Fq 'type nat hook prerouting priority mangle - 1; policy accept;' "$direct_rules"
-grep -Fq 'iifname { "br-lan" } udp dport 53 redirect to :53' "$direct_rules"
+if grep -Fq 'chain xray_simple_dns_prerouting' "$direct_rules"; then
+	echo 'dnsmasq mode must use dnsmasq built-in DNS hijacking instead of a duplicate redirect chain' >&2
+	exit 1
+fi
+grep -Fq 'iifname { "br-lan" } udp dport 53 return' "$direct_rules"
+test "$(grep -nF 'udp dport 53 return' "$direct_rules" | head -n1 | cut -d: -f1)" -lt "$(grep -nF 'tproxy ip to 127.0.0.1:12345' "$direct_rules" | head -n1 | cut -d: -f1)"
 if grep -Fq 'udp dport != 53' "$direct_rules"; then
 	echo 'dnsmasq mode unexpectedly retained direct UDP/53 TProxy rules' >&2
 	exit 1
@@ -82,6 +114,13 @@ fi
 dnsmasq_dir="$RUNDIR/dnsmasq.test.d"
 mkdir -p "$dnsmasq_dir"
 printf 'conf-dir=%s\n' "$dnsmasq_dir" >"$RUNDIR/generated-dnsmasq.conf.test"
+dnsmasq_hijack_enabled() { return 1; }
+if setup_dnsmasq_upstream >"$RUNDIR/dnsmasq-hijack-disabled.out" 2>&1; then
+	echo 'dnsmasq upstream unexpectedly started without dns_redirect' >&2
+	exit 1
+fi
+grep -Fq 'dnsmasq DNS hijacking is disabled' "$RUNDIR/dnsmasq-hijack-disabled.out"
+dnsmasq_hijack_enabled() { return 0; }
 setup_dnsmasq_upstream
 grep -Fq 'no-resolv' "$dnsmasq_dir/$DNSMASQ_FRAGMENT"
 grep -Fq 'server=127.0.0.1#5353' "$dnsmasq_dir/$DNSMASQ_FRAGMENT"

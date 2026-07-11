@@ -8,6 +8,7 @@ uci get xray_simple.@general[0].system_log >/dev/null 2>&1 || uci set xray_simpl
 uci get xray_simple.@general[0].runtime_log_file >/dev/null 2>&1 || uci set xray_simple.@general[0].runtime_log_file='/var/etc/xray-simple/xray.log'
 uci get xray_simple.@general[0].dnsmasq_upstream >/dev/null 2>&1 || uci set xray_simple.@general[0].dnsmasq_upstream='0'
 uci get xray_simple.@general[0].dnsmasq_xray_port >/dev/null 2>&1 || uci set xray_simple.@general[0].dnsmasq_xray_port='5353'
+uci get xray_simple.@general[0].fakedns_auto_detect >/dev/null 2>&1 || uci set xray_simple.@general[0].fakedns_auto_detect='1'
 uci -q get xray_simple.@general[0].lan_ifaces >/dev/null 2>&1 || uci add_list xray_simple.@general[0].lan_ifaces='br-lan'
 
 # 3. 清理已废弃的旧版本临时导入字段，避免残留脏配置
