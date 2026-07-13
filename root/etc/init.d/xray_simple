@@ -357,7 +357,7 @@ write_nft() {
 	lan_ifaces="$(nft_string_set_body "$(uci_list lan_ifaces)")"
 	bypass_uids="$(nft_set_body "$(uci_list bypass_uids)" "")"
 	bypass_gids="$(nft_set_body "$(uci_list bypass_gids)" "")"
-	private_ipv4="{ 10.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16 }"
+	private_ipv4="{ 10.0.0.0/8, 100.64.0.0/10, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16 }"
 	private_ipv6="fc00::/7"
 	lan_match=""
 	[ -n "$lan_ifaces" ] && lan_match="iifname { ${lan_ifaces} } "

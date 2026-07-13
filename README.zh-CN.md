@@ -101,7 +101,7 @@ LuCI 的“保存并应用”只提交 UCI 设置，不会重启 Xray 或 firewa
 - IPv6 路由表：`106`
 - LAN 接口：`br-lan`
 
-规则会绕过 `10.0.0.0/8`、`172.16.0.0/12`、`192.168.0.0/16` 和 IPv6 ULA `fc00::/7`，并绕过 IPv4 link-local、IPv6 link-local 和 IPv6 multicast 目的地址。
+规则会绕过 `10.0.0.0/8`、`100.64.0.0/10`、`172.16.0.0/12`、`192.168.0.0/16` 和 IPv6 ULA `fc00::/7`，并绕过 IPv4 link-local、IPv6 link-local 和 IPv6 multicast 目的地址。
 
 默认启用 **自动代理 Xray FakeDNS 地址池**。服务启动时会从当前 profile 物化出的 JSON 中提取 `fakedns[].ipPool`（IPv4 和 IPv6），与 **补充劫持 IPv4/IPv6 CIDR** 合并后生成 `proxy_ipv4`、`proxy_ipv6` nft 集合。这些强制代理规则位于私网、ULA 和用户 bypass 规则之前，因此例如 `198.18.0.0/15` 与 `fc00::/18` 均会进入 Xray。手动强制代理网段同样优先于 bypass 网段。
 

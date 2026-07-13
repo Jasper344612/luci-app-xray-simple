@@ -87,7 +87,7 @@ write_nft
 direct_rules="$RUNDIR/direct_xray_simple.nft"
 grep -Fq 'table inet xray_simple' "$direct_rules"
 grep -Fq 'iifname { "br-lan" } meta l4proto { tcp, udp }' "$direct_rules"
-grep -Fq 'ip daddr { 10.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16 } udp dport != 53 return' "$direct_rules"
+grep -Fq 'ip daddr { 10.0.0.0/8, 100.64.0.0/10, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16 } udp dport != 53 return' "$direct_rules"
 grep -Fq 'ip6 daddr { ::1/128, fe80::/10, ff00::/8 } return' "$direct_rules"
 grep -Fq 'elements = { 100.64.0.0/10, 198.18.0.0/15 }' "$direct_rules"
 grep -Fq 'elements = { fd00:1234::/48, fc00::/18 }' "$direct_rules"
