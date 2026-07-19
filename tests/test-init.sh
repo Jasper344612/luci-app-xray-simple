@@ -93,6 +93,8 @@ grep -Fq 'elements = { 100.64.0.0/10, 198.18.0.0/15 }' "$direct_rules"
 grep -Fq 'elements = { fd00:1234::/48, fc00::/18 }' "$direct_rules"
 grep -Fq 'ip6 daddr @proxy_ipv6 meta l4proto { tcp, udp } meta mark set 0x00000001 tproxy ip6' "$direct_rules"
 test "$(grep -nF 'ip6 daddr @proxy_ipv6' "$direct_rules" | head -n1 | cut -d: -f1)" -lt "$(grep -nF 'ip6 daddr fc00::/7 return' "$direct_rules" | head -n1 | cut -d: -f1)"
+grep -Fq 'ct direction reply return' "$direct_rules"
+test "$(grep -nF 'ct direction reply return' "$direct_rules" | head -n1 | cut -d: -f1)" -lt "$(grep -nF 'meta l4proto { tcp, udp } meta mark set 0x00000001 accept' "$direct_rules" | head -n1 | cut -d: -f1)"
 if grep -Fq 'tcp dport != 53' "$direct_rules"; then
 	echo 'TCP/53 must not receive the DNS-specific exception' >&2
 	exit 1

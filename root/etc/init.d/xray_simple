@@ -453,6 +453,7 @@ write_nft() {
 	        type route hook output priority mangle + 10; policy accept;
 
 	        meta mark ${outbound_mark_h} return
+	        ct direction reply return
 		EOF
 		if [ -n "$bypass_uids" ]; then
 			cat >> "$NFT_FILE" <<-EOF
