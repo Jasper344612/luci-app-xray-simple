@@ -438,6 +438,102 @@ function commandGroup(section, tab, id, label, buttons) {
 }
 
 /**
+ * 将系统设置标签页中的普通 LuCI 选项整理为原生 details 折叠面板。
+ * 选项节点本身只会被移动，不会被重新创建，因此其依赖、校验和保存行为保持不变。
+ * @param {Node} root - form.Map 渲染后的根节点
+ * @param {string} sectionId - general UCI section 的实际 ID
+ * @param {Array<Object>} groups - 折叠分组定义
+ */
+function groupSystemSettings(root, sectionId, groups) {
+    const optionNode = function (optionId) {
+        const frameId = 'cbi-' + variant + '-' + sectionId + '-' + optionId;
+        const widgetId = 'widget.cbid.' + variant + '.' + sectionId + '.' + optionId;
+        const nodes = root.querySelectorAll('[id]');
+
+        for (let i = 0; i < nodes.length; i++) {
+            if (nodes[i].id === frameId) {
+                return nodes[i];
+            }
+            if (nodes[i].id === widgetId) {
+                return nodes[i].closest('.cbi-value');
+            }
+        }
+        return null;
+    };
+
+    const anchor = optionNode(groups[0].options[0]);
+    if (!anchor || !anchor.parentNode) {
+        return;
+    }
+
+    const host = E('div', { 'class': 'xray-simple-settings-groups' });
+    anchor.parentNode.insertBefore(host, anchor);
+
+    groups.forEach(function (group, index) {
+        const content = E('div', { 'class': 'xray-simple-settings-group-content' });
+        const attributes = { 'class': 'xray-simple-settings-group' };
+        if (index === 0) {
+            attributes.open = 'open';
+        }
+        const details = E('details', attributes, [
+            E('summary', {}, [
+                E('span', { 'class': 'xray-simple-settings-group-title' }, group.title),
+                E('span', { 'class': 'xray-simple-settings-group-description' }, group.description)
+            ]),
+            content
+        ]);
+
+        group.options.forEach(function (optionId) {
+            const node = optionNode(optionId);
+            if (node) {
+                content.appendChild(node);
+            }
+        });
+        host.appendChild(details);
+    });
+
+    host.insertBefore(E('style', {}, [
+        '.xray-simple-settings-group{border:1px solid var(--border-color-medium,#d7d7d7);',
+        'border-radius:6px;margin:0 0 .85rem;background:var(--background-color-high,#fff);overflow:hidden}',
+        '.xray-simple-settings-group>summary{cursor:pointer;padding:.85rem 1rem;list-style:none;',
+        'display:flex;flex-direction:column;gap:.2rem;background:rgba(127,127,127,.07);user-select:none}',
+        '.xray-simple-settings-group>summary::-webkit-details-marker{display:none}',
+        '.xray-simple-settings-group>summary:before{content:"›";position:absolute;font-size:1.35rem;',
+        'line-height:1rem;transform:rotate(0deg);transition:transform .15s ease}',
+        '.xray-simple-settings-group[open]>summary:before{transform:rotate(90deg)}',
+        '.xray-simple-settings-group-title,.xray-simple-settings-group-description{margin-left:1.35rem}',
+        '.xray-simple-settings-group-title{font-weight:600;font-size:1.05em}',
+        '.xray-simple-settings-group-description{font-size:.9em;opacity:.72;font-weight:400}',
+        '.xray-simple-settings-group-content{padding:.35rem 1rem .2rem}',
+        '.xray-simple-settings-group-content>.cbi-value:last-child{border-bottom:0}',
+        '@media(max-width:600px){.xray-simple-settings-group-content{padding:.25rem .65rem .1rem}}'
+    ].join('')), host.firstChild);
+
+    // Native validation events are not shown inside a closed details element.
+    // Open the owning group before LuCI focuses or reports the invalid field.
+    host.addEventListener('invalid', function (ev) {
+        const details = ev.target.closest('details');
+        if (details) {
+            details.open = true;
+        }
+    }, true);
+
+    // LuCI also reports some datatype failures by toggling this CSS class.
+    const observer = new MutationObserver(function (mutations) {
+        mutations.forEach(function (mutation) {
+            const target = mutation.target;
+            if (target.classList && target.classList.contains('cbi-input-invalid')) {
+                const details = target.closest('details');
+                if (details) {
+                    details.open = true;
+                }
+            }
+        });
+    });
+    observer.observe(host, { subtree: true, attributes: true, attributeFilter: ['class'] });
+}
+
+/**
  * 解析后端传来的 geodata 检测输出文本。将其解析为一个包含资源路径、geoip 以及 geosite 存在状态的对象。
  * @param {string} output - 后端命令 geodata_status 的返回文本
  * @returns {Object} 解析后的状态结果结构体
@@ -920,6 +1016,35 @@ return view.extend({
             });
         };
 
-        return m.render();
+        return Promise.resolve(m.render()).then(function (node) {
+            groupSystemSettings(node, generalConfig['.name'], [
+                {
+                    title: _('Basic Settings'),
+                    description: _('Enable the service and configure the Xray runtime paths.'),
+                    options: ['enabled', 'xray_bin', 'asset_dir', '_geodata_notice']
+                },
+                {
+                    title: _('Logging Settings'),
+                    description: _('Choose where Xray writes its runtime output.'),
+                    options: ['system_log', 'runtime_log_file']
+                },
+                {
+                    title: _('DNS & Forced Proxy'),
+                    description: _('Configure LAN DNS handling, FakeDNS detection, and always-proxied networks.'),
+                    options: ['_dnsmasq_upstream', 'proxy_lan_dns', 'fakedns_auto_detect', 'proxy_ipv4', 'proxy_ipv6']
+                },
+                {
+                    title: _('Traffic Policy'),
+                    description: _('Choose which interfaces and router-local traffic are proxied or bypassed.'),
+                    options: ['lan_ifaces', 'proxy_router_output', 'bypass_uids', 'bypass_gids', 'bypass_ipv4', 'bypass_ipv6']
+                },
+                {
+                    title: _('TProxy Advanced Settings'),
+                    description: _('Low-level nftables and policy-routing parameters. The defaults are recommended.'),
+                    options: ['nft_mode', 'tproxy_port', 'mark', 'outbound_mark', 'route_table_v4', 'route_table_v6']
+                }
+            ]);
+            return node;
+        });
     }
 });

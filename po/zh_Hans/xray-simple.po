@@ -367,3 +367,33 @@ msgstr "补充劫持 IPv6/CIDR"
 
 msgid "Always send these IPv6 ranges through Xray. They are merged with automatically detected FakeDNS pools and take priority over ULA and bypass ranges."
 msgstr "始终将这些 IPv6 网段交给 Xray。它们会与自动检测的 FakeDNS 地址池合并，并优先于 ULA 和绕过网段。"
+
+msgid "Basic Settings"
+msgstr "基本设置"
+
+msgid "Enable the service and configure the Xray runtime paths."
+msgstr "启用服务并配置 Xray 运行路径。"
+
+msgid "Logging Settings"
+msgstr "日志设置"
+
+msgid "Choose where Xray writes its runtime output."
+msgstr "选择 Xray 运行输出的写入位置。"
+
+msgid "DNS & Forced Proxy"
+msgstr "DNS 与强制代理"
+
+msgid "Configure LAN DNS handling, FakeDNS detection, and always-proxied networks."
+msgstr "配置 LAN DNS 处理、FakeDNS 检测和始终代理的网段。"
+
+msgid "Traffic Policy"
+msgstr "流量策略"
+
+msgid "Choose which interfaces and router-local traffic are proxied or bypassed."
+msgstr "选择需要代理或绕过的接口及路由器本机流量。"
+
+msgid "TProxy Advanced Settings"
+msgstr "TProxy 高级设置"
+
+msgid "Low-level nftables and policy-routing parameters. The defaults are recommended."
+msgstr "底层 nftables 与策略路由参数，建议保留默认值。"
