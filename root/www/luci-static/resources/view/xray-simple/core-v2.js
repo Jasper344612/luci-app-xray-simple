@@ -477,8 +477,11 @@ function groupSystemSettings(root, sectionId, groups) {
         }
         const details = E('details', attributes, [
             E('summary', {}, [
-                E('span', { 'class': 'xray-simple-settings-group-title' }, group.title),
-                E('span', { 'class': 'xray-simple-settings-group-description' }, group.description)
+                E('div', { 'class': 'xray-simple-settings-group-title-wrapper' }, [
+                    E('span', { 'class': 'xray-simple-settings-group-title' }, group.title),
+                    E('span', { 'class': 'xray-simple-settings-group-description' }, group.description)
+                ]),
+                E('span', { 'class': 'xray-simple-settings-group-arrow' })
             ]),
             content
         ]);
@@ -493,20 +496,30 @@ function groupSystemSettings(root, sectionId, groups) {
     });
 
     host.insertBefore(E('style', {}, [
-        '.xray-simple-settings-group{border:1px solid var(--border-color-medium,#d7d7d7);',
-        'border-radius:6px;margin:0 0 .85rem;background:var(--background-color-high,#fff);overflow:hidden}',
-        '.xray-simple-settings-group>summary{cursor:pointer;padding:.85rem 1rem;list-style:none;',
-        'display:flex;flex-direction:column;gap:.2rem;background:rgba(127,127,127,.07);user-select:none}',
+        '.xray-simple-settings-group{border:1px solid var(--border-color-medium,rgba(0,0,0,.12));',
+        'border-radius:8px;margin:0 0 1rem 0;background:var(--background-color-high,#fff);overflow:hidden;',
+        'box-shadow:0 1px 3px rgba(0,0,0,.03);transition:border-color .2s ease,box-shadow .2s ease}',
+        '.xray-simple-settings-group:hover{border-color:var(--primary-color-medium,var(--border-color-high,#b0b0b0))}',
+        '.xray-simple-settings-group[open]{box-shadow:0 2px 6px rgba(0,0,0,.05)}',
+        '.xray-simple-settings-group>summary{cursor:pointer;padding:.85rem 1.15rem;list-style:none;',
+        'display:flex;align-items:center;justify-content:space-between;gap:.75rem;',
+        'background:var(--background-color-medium,rgba(127,127,127,.06));user-select:none;',
+        'transition:background-color .2s ease;position:relative}',
         '.xray-simple-settings-group>summary::-webkit-details-marker{display:none}',
-        '.xray-simple-settings-group>summary:before{content:"›";position:absolute;font-size:1.35rem;',
-        'line-height:1rem;transform:rotate(0deg);transition:transform .15s ease}',
-        '.xray-simple-settings-group[open]>summary:before{transform:rotate(90deg)}',
-        '.xray-simple-settings-group-title,.xray-simple-settings-group-description{margin-left:1.35rem}',
-        '.xray-simple-settings-group-title{font-weight:600;font-size:1.05em}',
-        '.xray-simple-settings-group-description{font-size:.9em;opacity:.72;font-weight:400}',
-        '.xray-simple-settings-group-content{padding:.35rem 1rem .2rem}',
+        '.xray-simple-settings-group>summary:hover{background:var(--background-color-high-hover,rgba(127,127,127,.12))}',
+        '.xray-simple-settings-group[open]>summary{border-bottom:1px solid var(--border-color-medium,rgba(0,0,0,.08));',
+        'background:var(--background-color-medium,rgba(127,127,127,.08))}',
+        '.xray-simple-settings-group-title-wrapper{display:flex;flex-direction:column;gap:.25rem;flex:1}',
+        '.xray-simple-settings-group-title{font-weight:600;font-size:1.02em;color:var(--text-color-high,inherit);line-height:1.3}',
+        '.xray-simple-settings-group-description{font-size:.88em;opacity:.72;font-weight:400;line-height:1.35}',
+        '.xray-simple-settings-group-arrow{display:inline-block;width:8px;height:8px;',
+        'border-right:2px solid var(--text-color-medium,#666);border-bottom:2px solid var(--text-color-medium,#666);',
+        'transform:rotate(-45deg);transition:transform .25s cubic-bezier(.4,0,.2,1);margin-right:.25rem;flex-shrink:0}',
+        '.xray-simple-settings-group[open] .xray-simple-settings-group-arrow{transform:rotate(45deg)}',
+        '.xray-simple-settings-group-content{padding:.6rem 1.15rem .4rem}',
         '.xray-simple-settings-group-content>.cbi-value:last-child{border-bottom:0}',
-        '@media(max-width:600px){.xray-simple-settings-group-content{padding:.25rem .65rem .1rem}}'
+        '@media(max-width:600px){.xray-simple-settings-group>summary{padding:.75rem .85rem}',
+        '.xray-simple-settings-group-content{padding:.4rem .75rem .2rem}}'
     ].join('')), host.firstChild);
 
     // Native validation events are not shown inside a closed details element.
