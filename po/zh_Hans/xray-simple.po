@@ -110,11 +110,20 @@ msgstr "IPv4/CIDR 值无效"
 msgid "Invalid IPv6/CIDR value"
 msgstr "IPv6/CIDR 值无效"
 
+msgid "Proxy interfaces"
+msgstr "代理接口"
+
 msgid "Invalid network interface name"
 msgstr "网络接口名称无效"
 
-msgid "LAN interfaces"
-msgstr "LAN 接口"
+msgid "Enabled"
+msgstr "已启用"
+
+msgid "FakeDNS auto-detect"
+msgstr "自动检测 FakeDNS"
+
+msgid "Select the network interfaces whose incoming traffic should be handled by Xray TProxy."
+msgstr "选择需要由 Xray TProxy 处理入站流量的网络接口。"
 
 msgid "Loading…"
 msgstr "加载中…"
@@ -155,6 +164,69 @@ msgstr "GID"
 msgid "Process Management"
 msgstr "进程管理"
 
+msgid "Runtime overview"
+msgstr "运行概览"
+
+msgid "Refresh status"
+msgstr "刷新状态"
+
+msgid "Last updated: %s"
+msgstr "最后更新：%s"
+
+msgid "Xray is running"
+msgstr "Xray 正在运行"
+
+msgid "Xray is stopped"
+msgstr "Xray 已停止"
+
+msgid "Xray status is unavailable"
+msgstr "Xray 状态不可用"
+
+msgid "The current process state could not be read."
+msgstr "无法读取当前进程状态。"
+
+msgid "The core process is active and managed by Xray Simple."
+msgstr "核心进程已启动，当前由 Xray Simple 管理。"
+
+msgid "The core process is not currently running."
+msgstr "核心进程当前未运行。"
+
+msgid "Active profile"
+msgstr "当前配置"
+
+msgid "DNS mode"
+msgstr "DNS 模式"
+
+msgid "System log"
+msgstr "系统日志"
+
+msgid "Detected FakeDNS pools"
+msgstr "检测到的 FakeDNS 地址池"
+
+msgid "Asset directory"
+msgstr "资源目录"
+
+msgid "Xray process"
+msgstr "Xray 进程"
+
+msgid "Control the Xray core process."
+msgstr "启动、停止或重启 Xray 核心进程。"
+
+msgid "TProxy rules"
+msgstr "TProxy 规则"
+
+msgid "Manage transparent proxy rules separately."
+msgstr "单独启用或停用透明代理规则。"
+
+msgid "Diagnostics"
+msgstr "诊断工具"
+
+msgid "Inspect the currently applied nftables state."
+msgstr "查看当前实际生效的 nftables 状态。"
+
+msgid "Detailed runtime status"
+msgstr "详细运行状态"
+
 msgid "Profile JSON"
 msgstr "配置 JSON"
 
@@ -176,8 +248,8 @@ msgstr "删除配置失败"
 msgid "At least one Xray profile is required."
 msgstr "至少需要保留一个 Xray 配置。"
 
-msgid "At least one LAN interface is required."
-msgstr "至少需要配置一个 LAN 接口。"
+msgid "At least one proxy interface is required."
+msgstr "至少需要选择一个代理接口。"
 
 msgid "Proxy LAN DNS UDP/53 directly through TProxy"
 msgstr "通过 TProxy 直接代理 LAN DNS UDP/53"
@@ -389,8 +461,8 @@ msgstr "配置 LAN DNS 处理、FakeDNS 检测和始终代理的网段。"
 msgid "Traffic Policy"
 msgstr "流量策略"
 
-msgid "Choose which interfaces and router-local traffic are proxied or bypassed."
-msgstr "选择需要代理或绕过的接口及路由器本机流量。"
+msgid "Choose the proxy interfaces and which router-local traffic is proxied or bypassed."
+msgstr "选择代理接口，以及需要代理或绕过的路由器本机流量。"
 
 msgid "TProxy Advanced Settings"
 msgstr "TProxy 高级设置"

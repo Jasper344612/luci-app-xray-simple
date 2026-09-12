@@ -1,6 +1,8 @@
 'use strict';
 'require form';
 'require fs';
+'require network';
+'require tools.widgets as widgets';
 'require uci';
 'require ui';
 'require view';
@@ -60,10 +62,6 @@ function validateCidrList(value, family) {
     } catch (e) {
         return _('Invalid IPv6/CIDR value');
     }
-}
-
-function validateInterfaceName(value) {
-    return /^[A-Za-z0-9_.:-]{1,15}$/.test(value || '') || _('Invalid network interface name');
 }
 
 function validateRouteTable(value, name) {
@@ -411,30 +409,239 @@ function runCommand(command, args) {
 }
 
 /**
- * 在 LuCI Form Section 中创建一个自定义的按钮组（通常对应启动、停止、重载等动作按钮）。
- * @param {Object} section - LuCI 表单 section 实例对象
- * @param {string} tab - 当前所属标签页 ID
- * @param {string} id - 元素唯一识别符
- * @param {string} label - 标签文本
- * @param {Array<Object>} buttons - 按钮配置项列表 (含有 label, command, style 属性)
- * @returns {Object} 创建的 form.DummyValue 选项对象
+ * 将 init 脚本的状态文本解析为适合概览卡片展示的结构。原始文本仍会保留在
+ * “诊断详情”中，避免后端新增字段时前端丢失信息。
  */
-function commandGroup(section, tab, id, label, buttons) {
-    const o = section.taboption(tab, form.DummyValue, '_' + id, label);
-    o.rawhtml = true;
-    o.renderWidget = function () {
-        return E('div', { 'class': 'cbi-button-group' }, buttons.map(function (button) {
-            return E('button', {
-                'type': 'button',
-                'class': 'btn cbi-button cbi-button-' + (button.style || 'button'),
-                'click': function (ev) {
-                    ev.preventDefault();
-                    return runCommand(button.command);
-                }
-            }, button.label);
-        }));
+function parseProcessStatus(result) {
+    const stdout = (result && result.stdout || '').trim();
+    const stderr = (result && result.stderr || '').trim();
+    const fields = {};
+    let running = false;
+    let available = false;
+    let pid = '';
+
+    stdout.split(/\n/).forEach(function (line, index) {
+        const runningMatch = line.match(/^Xray Simple running, pid\s+(.+)$/);
+        const fieldMatch = line.match(/^([^:]+):\s*(.*)$/);
+
+        if (runningMatch) {
+            running = true;
+            available = true;
+            pid = runningMatch[1].trim();
+        } else if (/^Xray Simple is not running$/.test(line)) {
+            available = true;
+        } else if (index > 0 && fieldMatch) {
+            fields[fieldMatch[1].trim().toLowerCase()] = fieldMatch[2].trim();
+        }
+    });
+
+    return {
+        available: available,
+        running: running,
+        pid: pid,
+        fields: fields,
+        error: stderr,
+        raw: [stdout, stderr].filter(Boolean).join('\n') || _('Xray Simple status unavailable')
     };
-    return o;
+}
+
+/**
+ * 渲染进程管理面板：突出最重要的运行状态，把操作按用途分区，并将长文本诊断
+ * 与 nftables 规则收进可按需展开的详情面板。
+ */
+function renderProcessDashboard(initialStatus, generatedNft, nftTitle) {
+    let currentStatus = parseProcessStatus(initialStatus);
+    let refreshButton;
+
+    const overview = E('div', { 'class': 'xray-simple-process-overview' });
+    const rawStatus = E('pre', { 'class': 'xray-simple-process-code' });
+    const updatedAt = E('span', { 'class': 'xray-simple-process-updated' });
+
+    function valueOrDash(value) {
+        return value || '—';
+    }
+
+    function infoCard(label, value, wide) {
+        return E('div', { 'class': 'xray-simple-process-info' + (wide ? ' is-wide' : '') }, [
+            E('span', { 'class': 'xray-simple-process-info-label' }, label),
+            E('span', { 'class': 'xray-simple-process-info-value', 'title': valueOrDash(value) }, [valueOrDash(value)])
+        ]);
+    }
+
+    function renderOverview() {
+        const fields = currentStatus.fields;
+        const stateClass = !currentStatus.available ? 'is-unknown' : currentStatus.running ? 'is-running' : 'is-stopped';
+        const stateTitle = !currentStatus.available
+            ? _('Xray status is unavailable')
+            : currentStatus.running ? _('Xray is running') : _('Xray is stopped');
+        const stateDescription = !currentStatus.available
+            ? _('The current process state could not be read.')
+            : currentStatus.running
+                ? _('The core process is active and managed by Xray Simple.')
+                : _('The core process is not currently running.');
+        overview.replaceChildren(
+            E('div', { 'class': 'xray-simple-process-hero ' + stateClass }, [
+                E('div', { 'class': 'xray-simple-process-state' }, [
+                    E('span', { 'class': 'xray-simple-process-state-dot', 'aria-hidden': 'true' }),
+                    E('div', {}, [
+                        E('strong', {}, stateTitle),
+                        E('span', {}, stateDescription)
+                    ])
+                ]),
+                currentStatus.pid ? E('span', { 'class': 'xray-simple-process-pid' }, ['PID ' + currentStatus.pid]) : ''
+            ]),
+            currentStatus.error ? E('div', { 'class': 'xray-simple-process-warning' }, [currentStatus.error]) : '',
+            E('div', { 'class': 'xray-simple-process-grid' }, [
+                infoCard(_('Active profile'), fields['active profile']),
+                infoCard(_('Rule loading mode'), fields['nft mode']),
+                infoCard(_('TProxy port'), fields['tproxy port']),
+                infoCard(_('Policy routing mark'), fields.mark),
+                infoCard(_('DNS mode'), fields['dns mode'], true),
+                infoCard(_('System log'), fields['system log'] === '1' ? _('Enabled') : fields['system log'] === '0' ? _('Disabled') : fields['system log']),
+                infoCard(_('FakeDNS auto-detect'), fields['fakedns auto-detect'] === '1' ? _('Enabled') : fields['fakedns auto-detect'] === '0' ? _('Disabled') : fields['fakedns auto-detect']),
+                infoCard(_('Asset directory'), fields['asset dir'], true),
+                fields['detected fakedns pools']
+                    ? infoCard(_('Detected FakeDNS pools'), fields['detected fakedns pools'], true)
+                    : ''
+            ])
+        );
+        rawStatus.textContent = currentStatus.raw;
+        updatedAt.textContent = _('Last updated: %s').format(new Date().toLocaleTimeString());
+    }
+
+    function actionButton(label, command, style) {
+        const button = E('button', {
+            'type': 'button',
+            'class': 'btn cbi-button cbi-button-' + style,
+            'click': function (ev) {
+                ev.preventDefault();
+                button.disabled = true;
+                return runCommand(command).then(function () {
+                    button.disabled = false;
+                });
+            }
+        }, label);
+        return button;
+    }
+
+    function actionCard(title, description, buttons) {
+        return E('section', { 'class': 'xray-simple-process-action' }, [
+            E('div', { 'class': 'xray-simple-process-action-copy' }, [
+                E('strong', {}, title),
+                E('span', {}, description)
+            ]),
+            E('div', { 'class': 'xray-simple-process-buttons' }, buttons)
+        ]);
+    }
+
+    refreshButton = E('button', {
+        'type': 'button',
+        'class': 'btn cbi-button cbi-button-action',
+        'click': function (ev) {
+            ev.preventDefault();
+            refreshButton.disabled = true;
+            return fs.exec(initScript, ['status']).then(function (result) {
+                currentStatus = parseProcessStatus(result);
+                renderOverview();
+            }).catch(function (err) {
+                currentStatus = parseProcessStatus({ stderr: commandErrorText(err) });
+                renderOverview();
+            }).then(function () {
+                refreshButton.disabled = false;
+            });
+        }
+    }, _('Refresh status'));
+
+    const dashboard = E('div', { 'class': 'xray-simple-process-dashboard' }, [
+        E('style', {}, [
+            '.xray-simple-process-frame>.cbi-value-title{display:none}',
+            '.xray-simple-process-frame>.cbi-value-field{width:100%;max-width:none;margin-left:0;min-width:0}',
+            '.xray-simple-process-dashboard{display:flex;flex-direction:column;gap:1rem;width:100%}',
+            '.xray-simple-process-toolbar{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap}',
+            '.xray-simple-process-toolbar h3{margin:0;font-size:1.15rem}',
+            '.xray-simple-process-toolbar-meta{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}',
+            '.xray-simple-process-updated{font-size:.85em;opacity:.65}',
+            '.xray-simple-process-overview{border:1px solid var(--border-color-medium,rgba(0,0,0,.12));border-radius:10px;',
+            'background:var(--background-color-high,#fff);overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)}',
+            '.xray-simple-process-hero{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 1.15rem;',
+            'border-bottom:1px solid var(--border-color-medium,rgba(0,0,0,.09));background:rgba(127,127,127,.045)}',
+            '.xray-simple-process-state{display:flex;align-items:center;gap:.8rem;min-width:0}',
+            '.xray-simple-process-state-dot{width:.8rem;height:.8rem;border-radius:50%;flex:0 0 auto;box-shadow:0 0 0 4px rgba(127,127,127,.12)}',
+            '.xray-simple-process-hero.is-running .xray-simple-process-state-dot{background:#2e9b55;box-shadow:0 0 0 4px rgba(46,155,85,.14)}',
+            '.xray-simple-process-hero.is-stopped .xray-simple-process-state-dot{background:#8a8f98}',
+            '.xray-simple-process-hero.is-unknown .xray-simple-process-state-dot{background:#d89218;box-shadow:0 0 0 4px rgba(216,146,24,.14)}',
+            '.xray-simple-process-state strong,.xray-simple-process-state span{display:block}',
+            '.xray-simple-process-state strong{font-size:1.05em;line-height:1.35}',
+            '.xray-simple-process-state span{font-size:.88em;opacity:.68;margin-top:.15rem}',
+            '.xray-simple-process-pid{font-family:monospace;font-size:.88em;padding:.32rem .55rem;border-radius:5px;',
+            'background:rgba(127,127,127,.11);white-space:nowrap}',
+            '.xray-simple-process-warning{margin:.85rem 1.15rem 0;padding:.65rem .8rem;border-left:4px solid #d89218;',
+            'background:rgba(216,146,24,.10);white-space:pre-wrap;word-break:break-word}',
+            '.xray-simple-process-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;padding:.35rem 1.15rem 1rem}',
+            '.xray-simple-process-info{min-width:0;padding:.75rem .9rem .55rem 0}',
+            '.xray-simple-process-info.is-wide{grid-column:span 2}',
+            '.xray-simple-process-info-label,.xray-simple-process-info-value{display:block}',
+            '.xray-simple-process-info-label{font-size:.78em;opacity:.62;margin-bottom:.28rem}',
+            '.xray-simple-process-info-value{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+            '.xray-simple-process-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}',
+            '.xray-simple-process-action{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.85rem 1rem;',
+            'border:1px solid var(--border-color-medium,rgba(0,0,0,.12));border-radius:8px;background:var(--background-color-high,#fff)}',
+            '.xray-simple-process-action.is-wide{grid-column:1/-1}',
+            '.xray-simple-process-action-copy{display:flex;flex-direction:column;gap:.2rem;min-width:9rem}',
+            '.xray-simple-process-action-copy span{font-size:.84em;opacity:.66;line-height:1.35}',
+            '.xray-simple-process-buttons{display:flex;gap:.45rem;justify-content:flex-end;flex-wrap:wrap}',
+            '.xray-simple-process-details{border:1px solid var(--border-color-medium,rgba(0,0,0,.12));border-radius:8px;overflow:hidden}',
+            '.xray-simple-process-details>summary{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.75rem 1rem;',
+            'cursor:pointer;list-style:none;font-weight:600;background:rgba(127,127,127,.055)}',
+            '.xray-simple-process-details>summary::-webkit-details-marker{display:none}',
+            '.xray-simple-process-details>summary:after{content:"+";font-size:1.2em;font-weight:400;opacity:.65}',
+            '.xray-simple-process-details[open]>summary:after{content:"−"}',
+            '.xray-simple-process-code{max-height:32em;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:0;',
+            'padding:1rem;background:#0d1117;color:#c9d1d9;font-size:.82em;line-height:1.5;border-radius:0}',
+            '@media(max-width:900px){.xray-simple-process-grid{grid-template-columns:repeat(2,minmax(0,1fr))}',
+            '.xray-simple-process-actions{grid-template-columns:1fr}}',
+            '@media(max-width:600px){.xray-simple-process-grid{grid-template-columns:1fr;padding:.25rem .9rem .8rem}',
+            '.xray-simple-process-info.is-wide{grid-column:auto}.xray-simple-process-hero{align-items:flex-start;padding:.9rem}',
+            '.xray-simple-process-action{align-items:flex-start;flex-direction:column}.xray-simple-process-buttons{justify-content:flex-start}',
+            '.xray-simple-process-toolbar{align-items:flex-start;flex-direction:column}}'
+        ].join('')),
+        E('div', { 'class': 'xray-simple-process-toolbar' }, [
+            E('h3', {}, _('Runtime overview')),
+            E('div', { 'class': 'xray-simple-process-toolbar-meta' }, [updatedAt, refreshButton])
+        ]),
+        overview,
+        E('div', { 'class': 'xray-simple-process-actions' }, [
+            actionCard(_('Xray process'), _('Control the Xray core process.'), [
+                actionButton(_('Start'), 'start_now', 'apply'),
+                actionButton(_('Stop'), 'stop_now', 'reset'),
+                actionButton(_('Restart'), 'restart_now', 'reload')
+            ]),
+            actionCard(_('TProxy rules'), _('Manage transparent proxy rules separately.'), [
+                actionButton(_('Start TProxy'), 'start_tproxy', 'apply'),
+                actionButton(_('Stop TProxy'), 'stop_tproxy', 'reset')
+            ]),
+            E('section', { 'class': 'xray-simple-process-action is-wide' }, [
+                E('div', { 'class': 'xray-simple-process-action-copy' }, [
+                    E('strong', {}, _('Diagnostics')),
+                    E('span', {}, _('Inspect the currently applied nftables state.'))
+                ]),
+                E('div', { 'class': 'xray-simple-process-buttons' }, [
+                    actionButton(_('Show nftables status'), 'nft_status', 'action')
+                ])
+            ])
+        ]),
+        E('details', { 'class': 'xray-simple-process-details' }, [
+            E('summary', {}, _('Detailed runtime status')),
+            rawStatus
+        ]),
+        E('details', { 'class': 'xray-simple-process-details' }, [
+            E('summary', {}, nftTitle),
+            E('pre', { 'class': 'xray-simple-process-code' }, [generatedNft || _('No generated rules yet')])
+        ])
+    ]);
+
+    renderOverview();
+    return dashboard;
 }
 
 /**
@@ -768,14 +975,18 @@ return view.extend({
             return validateCidrList(value, 6);
         };
 
-        o = s.taboption('system', form.DynamicList, 'lan_ifaces', _('LAN interfaces'));
-        o.placeholder = 'br-lan';
+        o = s.taboption('system', widgets.DeviceSelect, 'lan_ifaces', _('Proxy interfaces'), _('Select the network interfaces whose incoming traffic should be handled by Xray TProxy.'));
+        o.noaliases = true;
+        // Preserve configured devices which are temporarily absent (USB, tunnels).
+        // DeviceSelect drops these values when nocreate is true.
+        o.nocreate = false;
+        o.multiple = true;
         o.rmempty = false;
         o.validate = function (sectionId, value) {
-            // DynamicList always renders one empty input for adding the next
-            // item. Validate real entries here and enforce a non-empty list
-            // when the complete form is saved.
-            return value === '' || validateInterfaceName(value);
+            const names = Array.isArray(value) ? value : [value];
+            return names.every(function (name) {
+                return /^[A-Za-z0-9_.:-]{1,15}$/.test(name || '');
+            }) || _('Invalid network interface name');
         };
 
         o = s.taboption('system', form.DynamicList, 'bypass_uids', _('Bypass UIDs'));
@@ -921,29 +1132,14 @@ return view.extend({
             ]);
         };
 
-        o = s.taboption('process', form.DummyValue, '_status', _('Xray Simple status'));
+        o = s.taboption('process', form.DummyValue, '_process_dashboard', _('Process Management'));
         o.rawhtml = true;
-        o.cfgvalue = function () {
-            return E('pre', { 'style': 'white-space: pre-wrap' }, (status.stdout || _('Xray Simple status unavailable')) + (status.stderr ? '\n' + status.stderr : ''));
-        };
-
-        commandGroup(s, 'process', 'xray_actions', _('Xray'), [
-            { label: _('Start'), command: 'start_now', style: 'apply' },
-            { label: _('Stop'), command: 'stop_now', style: 'reset' },
-            { label: _('Restart'), command: 'restart_now', style: 'reload' }
-        ]);
-        commandGroup(s, 'process', 'tproxy_actions', _('TProxy'), [
-            { label: _('Start TProxy'), command: 'start_tproxy', style: 'apply' },
-            { label: _('Stop TProxy'), command: 'stop_tproxy', style: 'reset' }
-        ]);
-        commandGroup(s, 'process', 'tool_actions', _('Tools'), [
-            { label: _('Show nftables status'), command: 'nft_status', style: 'action' }
-        ]);
-
-        o = s.taboption('process', form.DummyValue, '_generated_nft', nftMode === 'direct' ? _('Generated direct nftables rules') : _('Generated firewall4 nftables rules'));
-        o.rawhtml = true;
-        o.cfgvalue = function () {
-            return E('pre', { 'style': 'max-height: 32em; overflow: auto; white-space: pre-wrap' }, generatedNft || _('No generated rules yet'));
+        o.renderWidget = function () {
+            return renderProcessDashboard(
+                status,
+                generatedNft,
+                nftMode === 'direct' ? _('Generated direct nftables rules') : _('Generated firewall4 nftables rules')
+            );
         };
 
         o = s.taboption('logs', form.DummyValue, '_logs_view', _('Xray runtime logs'));
@@ -1020,7 +1216,7 @@ return view.extend({
                     ? currentGeneral.lan_ifaces
                     : [currentGeneral.lan_ifaces];
                 if (!lanInterfaces.some(function (iface) { return !!iface; })) {
-                    return Promise.reject(_('At least one LAN interface is required.'));
+                    return Promise.reject(_('At least one proxy interface is required.'));
                 }
 
                 return true;
@@ -1048,7 +1244,7 @@ return view.extend({
                 },
                 {
                     title: _('Traffic Policy'),
-                    description: _('Choose which interfaces and router-local traffic are proxied or bypassed.'),
+                    description: _('Choose the proxy interfaces and which router-local traffic is proxied or bypassed.'),
                     options: ['lan_ifaces', 'proxy_router_output', 'bypass_uids', 'bypass_gids', 'bypass_ipv4', 'bypass_ipv6']
                 },
                 {
@@ -1057,6 +1253,11 @@ return view.extend({
                     options: ['nft_mode', 'tproxy_port', 'mark', 'outbound_mark', 'route_table_v4', 'route_table_v6']
                 }
             ]);
+            const dashboard = node.querySelector('.xray-simple-process-dashboard');
+            const processFrame = dashboard ? dashboard.closest('.cbi-value') : null;
+            if (processFrame) {
+                processFrame.classList.add('xray-simple-process-frame');
+            }
             return node;
         });
     }
