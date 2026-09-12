@@ -983,7 +983,8 @@ return view.extend({
         o.multiple = true;
         o.rmempty = false;
         o.validate = function (sectionId, value) {
-            const names = Array.isArray(value) ? value : [value];
+            const rawValue = String(value || '').trim();
+            const names = Array.isArray(value) ? value : (rawValue ? rawValue.split(/\s+/) : []);
             return names.every(function (name) {
                 return /^[A-Za-z0-9_.:-]{1,15}$/.test(name || '');
             }) || _('Invalid network interface name');
