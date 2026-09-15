@@ -1,0 +1,249 @@
+/* Shared visual language, scoped to Xray Simple so other LuCI pages keep their theme. */
+.xray-simple-ui {
+    --xs-surface: var(--background-color-high, #fff);
+    --xs-subtle: var(--background-color-low, #f6f8fb);
+    --xs-text: var(--text-color-high, #243247);
+    --xs-muted: var(--text-color-medium, #64748b);
+    --xs-border: var(--border-color-medium, #e2e8f0);
+    --xs-accent: #2563eb;
+    --xs-accent-soft: #eff6ff;
+    --xs-success: #18794e;
+    --xs-success-soft: #effaf4;
+    --xs-warning: #946200;
+    --xs-warning-soft: #fff9eb;
+    --xs-danger: #c03636;
+    color: var(--xs-text);
+    line-height: 1.6;
+}
+.xray-simple-page { width: 100%; min-width: 0; margin: 0 auto; }
+.xray-simple-ui *, .xray-simple-ui *::before, .xray-simple-ui *::after { box-sizing: border-box; }
+.xray-simple-page > h2 { padding: 1rem 1.25rem; border: 1px solid var(--xs-border); border-radius: 12px; background: var(--xs-surface); color: var(--xs-text); box-shadow: 0 2px 8px #00000004; margin: 0 0 .6rem; font-size: 1.75rem; font-weight: 650; letter-spacing: -.035em; }
+.xray-simple-ui .cbi-map-descr, .xray-simple-ui .cbi-section-descr {
+    color: var(--xs-muted); font-size: .9rem; line-height: 1.65; margin-bottom: 1.5rem;
+}
+.xray-simple-page > .cbi-section {
+    border: 0; padding: 0; margin: 1.5rem 0; background: transparent; box-shadow: none;
+}
+.xray-simple-ui h3 { color: var(--xs-text); font-size: 1.05rem; font-weight: 600; }
+.xray-simple-ui .cbi-tabmenu {
+    display: flex; gap: .35rem; padding: .35rem; margin: 0 0 1.25rem;
+    border: 1px solid var(--xs-border); border-radius: 10px; background: var(--xs-subtle);
+    overflow-x: auto; flex-wrap: nowrap;
+}
+.xray-simple-ui .cbi-tabmenu > li {
+    float: none; flex: 0 0 auto; height: auto; max-width: none; margin: 0; padding: 0; border: 0; border-radius: 7px;
+    background: transparent; box-shadow: none;
+}
+.xray-simple-ui .cbi-tabmenu > li > a {
+    display: block; padding: .55rem 1rem; border: 0; border-radius: 7px;
+    color: var(--xs-muted); font-size: .9rem; font-weight: 550; line-height: 1.5; text-decoration: none;
+}
+.xray-simple-ui .cbi-tabmenu > .cbi-tab > a {
+    background: var(--xs-surface); color: var(--xs-accent); box-shadow: 0 1px 3px #0000000a;
+}
+.xray-simple-ui .cbi-tabmenu > .cbi-tab-disabled > a { background: transparent; }
+.xray-simple-ui .cbi-tabmenu > li > a:hover { color: var(--xs-accent); }
+.xray-simple-ui .cbi-section-node { border: 0; padding: 0; background: transparent; }
+.xray-simple-ui .cbi-value { margin: 0; padding: .85rem 0; border-bottom: 1px solid var(--xs-border); }
+.xray-simple-ui .cbi-value label.cbi-value-title { color: var(--xs-text); font-size: .9rem; font-weight: 550; line-height: 1.6; }
+.xray-simple-ui .cbi-value-description { opacity: 1; color: var(--xs-muted); font-size: .82rem; line-height: 1.65; margin-top: .45rem; }
+.xray-simple-ui :is(input.cbi-input-text, select.cbi-input-select, textarea, .cbi-dropdown) {
+    border: 1px solid var(--xs-border); border-radius: 7px; background: var(--xs-surface);
+    color: var(--xs-text); box-shadow: none; max-width: 100%;
+}
+.xray-simple-ui :is(input.cbi-input-text, select.cbi-input-select) { min-height: 36px; padding: .4rem .65rem; }
+.xray-simple-ui input[type="checkbox"] { accent-color: var(--xs-accent); width: 1rem; height: 1rem; }
+.xray-simple-ui :is(a, button, input, select, textarea, summary, [tabindex]):focus-visible,
+.xray-simple-editor:focus-visible {
+    outline: 2px solid var(--xs-accent); outline-offset: 3px;
+}
+.xray-simple-ui .cbi-input-invalid { border-color: var(--xs-danger) !important; }
+/* LuCI owns button foregrounds, backgrounds and semantic action colors.
+ * Only adjust geometry: mixing our surface with Argon's !important white text
+ * makes action buttons unreadable and breaks its explicit dark palette. */
+.xray-simple-ui :is(.btn, .cbi-button) {
+    display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
+    min-height: 36px; padding: .45rem .85rem; border-radius: 8px;
+    font-size: .82rem; font-weight: 550; line-height: 1.4;
+    text-transform: none; white-space: normal; cursor: pointer;
+}
+.xray-simple-ui :is(.btn, .cbi-button):disabled { opacity: .5; cursor: not-allowed; }
+.xray-simple-inline-actions, .xray-simple-process-buttons, .xray-simple-dialog-actions {
+    display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+}
+.xray-simple-dialog-actions { justify-content: flex-end; margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--xs-border); }
+.xray-simple-ui .cbi-value.xray-simple-full-width > .cbi-value-title { display: none; }
+.xray-simple-ui .xray-simple-full-width > .cbi-value-field { width: 100%; max-width: none; margin-left: 0; min-width: 0; padding: 0; }
+.xray-simple-ui .xray-simple-full-width { padding: 0; border: 0; }
+.xray-simple-settings-groups, .xray-simple-process-dashboard, .xray-simple-logs { display: flex; flex-direction: column; gap: 1rem; width: 100%; min-width: 0; }
+.xray-simple-settings-group, .xray-simple-process-overview, .xray-simple-process-action, .xray-simple-process-details {
+    border: 1px solid var(--xs-border); border-radius: 12px; background: var(--xs-surface); margin: 0;
+    box-shadow: 0 2px 8px #00000004;
+}
+.xray-simple-settings-group > summary, .xray-simple-process-details > summary {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    padding: 1rem 1.25rem; cursor: pointer; list-style: none; border-radius: 10px;
+    font-weight: 600; user-select: none;
+}
+.xray-simple-settings-group > summary::-webkit-details-marker, .xray-simple-process-details > summary::-webkit-details-marker { display: none; }
+.xray-simple-settings-group > summary:hover, .xray-simple-process-details > summary:hover { background: var(--xs-subtle); }
+.xray-simple-settings-group[open] > summary, .xray-simple-process-details[open] > summary {
+    border-bottom: 1px solid var(--xs-border); border-radius: 10px 10px 0 0;
+}
+.xray-simple-settings-group-title-wrapper { display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+.xray-simple-settings-group-title { font-size: .95rem; font-weight: 600; }
+.xray-simple-settings-group-description { color: var(--xs-muted); font-size: .82rem; line-height: 1.55; font-weight: 400; }
+.xray-simple-settings-group-arrow, .xray-simple-process-details > summary::after {
+    content: ''; display: block; width: 7px; height: 7px; flex: 0 0 7px; margin-right: .2rem;
+    border-right: 1.5px solid var(--xs-muted); border-bottom: 1.5px solid var(--xs-muted);
+    transform: rotate(-45deg); transition: transform .15s;
+}
+.xray-simple-settings-group[open] > summary .xray-simple-settings-group-arrow,
+.xray-simple-process-details[open] > summary::after { transform: rotate(45deg); }
+.xray-simple-settings-group-content { padding: .25rem 1.25rem .5rem; }
+.xray-simple-settings-group-content > .cbi-value:last-child { border-bottom: 0; }
+.xray-simple-process-toolbar { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+.xray-simple-ui .xray-simple-process-toolbar h3 { margin: 0; padding: 0; background: transparent; box-shadow: none; font-size: 1rem; }
+.xray-simple-process-toolbar-meta { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.xray-simple-process-updated { color: var(--xs-muted); font-size: .78rem; }
+.xray-simple-process-hero { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.25rem; border-bottom: 1px solid var(--xs-border); }
+.xray-simple-process-state { display: flex; align-items: center; gap: .85rem; min-width: 0; }
+.xray-simple-process-state .xray-simple-process-state-dot {
+    display: block; width: 9px; height: 9px; flex: 0 0 9px; margin: 0; border-radius: 50%;
+    background: var(--xs-muted); box-shadow: 0 0 0 5px var(--xs-subtle);
+}
+.xray-simple-process-hero.is-running .xray-simple-process-state-dot { background: var(--xs-success); box-shadow: 0 0 0 5px var(--xs-success-soft); }
+.xray-simple-process-hero.is-unknown .xray-simple-process-state-dot { background: var(--xs-warning); box-shadow: 0 0 0 5px var(--xs-warning-soft); }
+.xray-simple-process-state strong { display: block; font-size: 1.05rem; font-weight: 600; }
+.xray-simple-process-state span { display: block; font-size: .82rem; color: var(--xs-muted); margin-top: .2rem; }
+.xray-simple-process-pid { padding: .25rem .55rem; border-radius: 5px; background: var(--xs-subtle); color: var(--xs-muted); font: .78rem ui-monospace, monospace; white-space: nowrap; }
+.xray-simple-process-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.25rem; padding: 1.25rem; }
+.xray-simple-process-info { min-width: 0; }
+.xray-simple-process-info.is-wide { grid-column: span 2; }
+.xray-simple-process-info-label { display: block; margin-bottom: .3rem; color: var(--xs-muted); font-size: .78rem; }
+.xray-simple-process-info-value { display: block; font-weight: 550; font-size: .9rem; overflow-wrap: anywhere; }
+.xray-simple-process-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.xray-simple-process-action { display: flex; align-items: flex-start; flex-direction: column; gap: 1rem; padding: 1.1rem 1.25rem; }
+.xray-simple-process-action.is-wide { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; align-items: center; }
+.xray-simple-process-action-copy { display: flex; flex-direction: column; gap: .2rem; }
+.xray-simple-process-action-copy strong { font-size: .9rem; font-weight: 600; }
+.xray-simple-process-action-copy span { color: var(--xs-muted); font-size: .82rem; }
+.xray-simple-badge {
+    display: inline-flex; align-items: center; gap: .4rem; padding: .2rem .6rem; border-radius: 6px;
+    color: var(--xs-muted); background: var(--xs-subtle); font-size: .78rem; font-weight: 550; white-space: nowrap;
+}
+.xray-simple-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.xray-simple-notice, .xray-simple-process-warning {
+    padding: .75rem 1rem; border: 1px solid var(--xs-border); border-radius: 7px;
+    font-size: .82rem; line-height: 1.7; overflow-wrap: anywhere;
+}
+.xray-simple-process-warning { margin: 1rem 1.25rem 0; white-space: pre-wrap; }
+.xray-simple-ui .is-info { color: var(--xs-accent); background: var(--xs-accent-soft); }
+.xray-simple-ui .is-success { color: var(--xs-success); background: var(--xs-success-soft); }
+.xray-simple-ui.is-warning, .xray-simple-ui .is-warning, .xray-simple-process-warning { color: var(--xs-warning); background: var(--xs-warning-soft); }
+.xray-simple-notice a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.xray-simple-code, .xray-simple-process-code, textarea.xray-simple-editor {
+    display: block; width: 100%; max-width: 100%; max-height: 32rem; overflow: auto; margin: 0;
+    padding: 1rem 1.25rem; border: 1px solid var(--xs-border); border-radius: 8px;
+    background: var(--xs-subtle); color: var(--xs-text); font: .82rem/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2;
+}
+textarea.xray-simple-editor { min-height: 22rem; resize: vertical; white-space: pre; overflow-wrap: normal; }
+.xray-simple-process-details > .xray-simple-process-code { border: 0; border-radius: 0 0 10px 10px; }
+.xray-simple-log-output { min-height: 22rem; max-height: 40rem; }
+.xray-simple-ui .cbi-section-table { width: 100%; border: 1px solid var(--xs-border); border-radius: 10px; border-spacing: 0; background: var(--xs-surface); }
+.xray-simple-ui .cbi-section-table-titles { background: var(--xs-subtle); }
+.xray-simple-ui .cbi-section-table :is(th, td, .th, .td) { padding: .85rem; border-color: var(--xs-border); font-size: .85rem; overflow-wrap: anywhere; }
+.xray-simple-ui .cbi-section-table-titles > * { color: var(--xs-muted); font-size: .78rem; font-weight: 550; }
+.xray-simple-ui .cbi-section-table-row { background: var(--xs-surface); }
+.xray-simple-ui .cbi-section-table-row:hover { background: var(--xs-subtle); }
+.xray-simple-ui .cbi-section-actions > * { display: flex; gap: .4rem; flex-wrap: wrap; }
+.xray-simple-dialog { min-width: 0; }
+.xray-simple-dns-form { width: 100%; }
+/* Derived from the active LuCI theme, including Argon's inline dark CSS. */
+:root[data-xray-simple-theme="dark"] .xray-simple-ui {
+    --xs-surface: var(--background-color-high, #25272e); --xs-subtle: var(--background-color-low, #202127);
+    --xs-text: var(--text-color-high, #e2e8f0); --xs-muted: var(--text-color-medium, #a3b1c6);
+    --xs-border: var(--border-color-medium, #3a3e49); --xs-accent: #a7b7ff; --xs-accent-soft: #2b324d;
+    --xs-success: #83d6ab; --xs-success-soft: #18382b; --xs-warning: #edc474; --xs-warning-soft: #3a301c; --xs-danger: #ff9c9c;
+    color-scheme: dark;
+}
+:root[data-xray-simple-theme="light"] .xray-simple-ui { color-scheme: light; }
+@media (max-width: 900px) {
+    .xray-simple-process-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .xray-simple-process-actions { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+    .xray-simple-page > h2 { font-size: 1.5rem; }
+    .xray-simple-ui :is(input.cbi-input-text, select.cbi-input-select, textarea, .cbi-dropdown) { min-width: 0; width: 100%; }
+    .xray-simple-ui .cbi-tabmenu > li { flex: 1 0 auto; text-align: center; }
+    .xray-simple-ui .cbi-tabmenu > li > a { padding: .55rem .6rem; font-size: .82rem; }
+    .xray-simple-settings-group > summary, .xray-simple-process-details > summary { padding: .9rem; }
+    .xray-simple-settings-group-content { padding: .1rem .9rem .35rem; }
+    .xray-simple-ui .cbi-value label.cbi-value-title { flex: 0 0 100%; float: none; display: block; width: 100%; padding: 0 0 .4rem; text-align: left; }
+    .xray-simple-ui .cbi-value-field { flex: 1 1 100%; width: 100%; min-width: 0; margin-left: 0; padding: 0; }
+    .xray-simple-process-grid { gap: 1rem; padding: 1rem; }
+    .xray-simple-process-info.is-wide { grid-column: 1 / -1; }
+    .xray-simple-process-hero { padding: 1rem; align-items: flex-start; flex-wrap: wrap; }
+    .xray-simple-process-action, .xray-simple-process-action.is-wide { padding: 1rem; flex-direction: column; align-items: flex-start; }
+    .xray-simple-process-toolbar { align-items: flex-start; }
+    .xray-simple-ui .cbi-section-table :is(th, td, .th, .td) { padding: .65rem; }
+    .xray-simple-ui .cbi-section-table { display: block; border: 0; background: transparent; }
+    .xray-simple-ui .cbi-section-table-titles { display: none; }
+    .xray-simple-ui .cbi-section-table-row {
+        display: block; margin-bottom: .75rem; padding: .5rem .9rem;
+        border: 1px solid var(--xs-border); border-radius: 10px;
+    }
+    .xray-simple-ui .cbi-section-table-row > :is(td, .td) {
+        display: flex; align-items: center; gap: .75rem; width: 100%; min-width: 0;
+        padding: .6rem 0; border: 0; text-align: left; flex-wrap: wrap;
+    }
+    .xray-simple-ui .cbi-section-table-row > [data-title]::before {
+        content: attr(data-title); display: block; flex: 0 0 5rem;
+        color: var(--xs-muted); font-size: .78rem; font-weight: 400;
+    }
+    .xray-simple-ui .cbi-section-table-row .xray-simple-inline-actions { flex: 1; }
+    textarea.xray-simple-editor { min-height: 18rem; padding: .75rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .xray-simple-ui *, .xray-simple-ui *::before, .xray-simple-ui *::after { transition: none !important; }
+}
+
+.modal:has(.xray-simple-editor) { width: 76rem; max-width: 95vw; }
+
+/* LuCI's default form-column width must not constrain full-width dashboard widgets. */
+.xray-simple-ui .cbi-value.xray-simple-full-width,
+.xray-simple-ui .cbi-value.xray-simple-full-width > .cbi-value-field,
+.xray-simple-ui .cbi-value.xray-simple-full-width .xray-simple-process-dashboard,
+.xray-simple-ui .cbi-value.xray-simple-full-width .xray-simple-logs {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0;
+}
+.xray-simple-ui .cbi-value.xray-simple-full-width > .cbi-value-field {
+    /* Argon uses table-cell here, creating an anonymous shrink-to-fit table. */
+    display: block;
+    flex: 1 1 100% !important;
+}
+
+/* Themes may style all form divs; keep our layout explicit and scoped. */
+.xray-simple-ui .xray-simple-settings-groups { display: flex; gap: .85rem; }
+.xray-simple-ui .xray-simple-process-toolbar { display: flex; }
+.xray-simple-ui .xray-simple-process-toolbar-meta { display: flex; }
+.xray-simple-ui .xray-simple-process-actions { display: grid; }
+.xray-simple-ui .xray-simple-settings-group { display: block; overflow: hidden; }
+.xray-simple-ui .xray-simple-settings-group-title-wrapper { display: flex; }
+.xray-simple-ui .xray-simple-process-info-value { margin: 0; }
+.xray-simple-ui .xray-simple-process-info-label { line-height: 1.5; }
+
+.xray-simple-ui .cbi-section-node > [data-tab] { background: transparent; box-shadow: none; }
+
+/* A code editor needs the dialog width, not the theme's compact form column. */
+.xray-simple-ui .cbi-value:has(textarea.xray-simple-editor) { display: block; }
+.xray-simple-ui .cbi-value:has(textarea.xray-simple-editor) > .cbi-value-title {
+    display: block; float: none; width: auto; text-align: left; padding: 0 0 .5rem;
+}
+.xray-simple-ui .cbi-value:has(textarea.xray-simple-editor) > .cbi-value-field {
+    display: block; clear: both; width: 100%; max-width: none; margin-left: 0;
+}
+.xray-simple-ui textarea.xray-simple-editor { width: 100%; min-width: 0; }

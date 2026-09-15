@@ -1091,6 +1091,70 @@ nft_status() {
 	fi
 }
 
+
+# Download the latest Xray core release for the current CPU architecture. Files
+# are verified before replacement and the prior core is kept as .bak.
+download_file() {
+	local output="$1"
+	local url="$2"
+
+	if command -v uclient-fetch >/dev/null 2>&1; then
+		uclient-fetch -q -O "$output" "$url"
+	else
+		wget -q -O "$output" "$url"
+	fi
+}
+
+update_xray_core() {
+	local asset_dir arch api tag archive tmpdir was_running
+	asset_dir="$(uci_get asset_dir /usr/share/xray)"
+	arch="$(uname -m)"
+	case "$arch" in
+		x86_64) archive="Xray-linux-64.zip" ;;
+		aarch64|arm64) archive="Xray-linux-arm64-v8a.zip" ;;
+		armv7l|armv7) archive="Xray-linux-arm32-v7a.zip" ;;
+		*) echo "unsupported Xray core architecture: $arch"; return 1 ;;
+	esac
+	api="https://api.github.com/repos/XTLS/Xray-core/releases/latest"
+	tmpdir="$(mktemp -d /tmp/xray-simple-core.XXXXXX)" || return 1
+	trap 'rm -rf "$tmpdir"' EXIT INT TERM
+	download_file "$tmpdir/release.json" "$api" || { echo "failed to retrieve latest Xray release"; return 1; }
+	tag="$(jsonfilter -i "$tmpdir/release.json" -e '@.tag_name')"
+	[ -n "$tag" ] || { echo "latest Xray release has no tag"; return 1; }
+	download_file "$tmpdir/xray.zip" "https://github.com/XTLS/Xray-core/releases/download/${tag}/${archive}" || { echo "failed to download ${archive}"; return 1; }
+	unzip -tq "$tmpdir/xray.zip" >/dev/null || { echo "downloaded Xray archive is invalid"; return 1; }
+	unzip -pq "$tmpdir/xray.zip" xray >"$tmpdir/xray" || { echo "Xray archive does not contain core binary"; return 1; }
+	chmod 0755 "$tmpdir/xray"
+	"$tmpdir/xray" version >/dev/null 2>&1 || { echo "downloaded Xray core cannot run"; return 1; }
+	was_running="$(xray_pids)"
+	[ -f "$(uci_get xray_bin /usr/bin/xray)" ] && cp "$(uci_get xray_bin /usr/bin/xray)" "$(uci_get xray_bin /usr/bin/xray).bak"
+	install -m 0755 "$tmpdir/xray" "$(uci_get xray_bin /usr/bin/xray)" || return 1
+	echo "Xray core updated to ${tag} (${arch})"
+	[ -n "$was_running" ] && restart_now
+}
+
+# Update geoip.dat and geosite.dat from the maintained v2ray-rules-dat release.
+update_geodata() {
+	local asset_dir tmpdir was_running
+	asset_dir="$(uci_get asset_dir /usr/share/xray)"
+	tmpdir="$(mktemp -d /tmp/xray-simple-geo.XXXXXX)" || return 1
+	trap 'rm -rf "$tmpdir"' EXIT INT TERM
+	mkdir -p "$asset_dir" || return 1
+	download_file "$tmpdir/geoip.dat" 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat' || { echo 'failed to download geoip.dat'; return 1; }
+	download_file "$tmpdir/geosite.dat" 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat' || { echo 'failed to download geosite.dat'; return 1; }
+	[ -s "$tmpdir/geoip.dat" ] && [ -s "$tmpdir/geosite.dat" ] || { echo 'downloaded geo database is empty'; return 1; }
+	was_running="$(xray_pids)"
+	install -m 0644 "$tmpdir/geoip.dat" "$asset_dir/geoip.dat" || return 1
+	install -m 0644 "$tmpdir/geosite.dat" "$asset_dir/geosite.dat" || return 1
+	echo "Geo database updated in ${asset_dir}"
+	[ -n "$was_running" ] && restart_now
+}
+
+update_resources() {
+	update_xray_core || return 1
+	update_geodata
+}
+
 # 命令行自定义命令：输出地缘资源数据文件 (geoip.dat/geosite.dat) 在资源目录下的检测状态。
 geodata_status() {
 	local asset_dir
@@ -1211,7 +1275,7 @@ run_async() {
 	shift
 
 	case "$command" in
-		start_now|stop_now|restart_now|start_tproxy|stop_tproxy|switch_profile) ;;
+		start_now|stop_now|restart_now|start_tproxy|stop_tproxy|switch_profile|update_xray_core|update_geodata|update_resources) ;;
 		*)
 			echo "unsupported async command: $command"
 			return 1
@@ -1245,6 +1309,9 @@ run_async() {
 			start_tproxy) start_tproxy ;;
 			stop_tproxy) stop_tproxy ;;
 			switch_profile) switch_profile "$target" ;;
+			update_xray_core) update_xray_core ;;
+			update_geodata) update_geodata ;;
+			update_resources) update_resources ;;
 		esac
 		rc="$?"
 		printf "exit=%s command=%s\n" "$rc" "$command" >"$ASYNC_STATUS"
@@ -1279,6 +1346,9 @@ extra_command "restart_now" "Enable in UCI and restart"
 extra_command "start_tproxy" "Start TProxy nftables and policy routing only"
 extra_command "stop_tproxy" "Stop TProxy nftables and policy routing only"
 extra_command "recent_xray_logs" "Show recent Xray log entries"
+extra_command "update_xray_core" "Download and install the latest Xray core"
+extra_command "update_geodata" "Download and install the latest geo database"
+extra_command "update_resources" "Update Xray core and geo database"
 
 # Configuration changes are applied explicitly through the LuCI process and
 # TProxy controls. A procd reload trigger here would restart Xray and

@@ -469,3 +469,42 @@ msgstr "TProxy 高级设置"
 
 msgid "Low-level nftables and policy-routing parameters. The defaults are recommended."
 msgstr "底层 nftables 与策略路由参数，建议保留默认值。"
+
+msgid "Manage your Xray service, traffic policies, and configuration profiles in one place."
+msgstr "集中管理 Xray 服务、流量策略与配置文件。"
+
+msgid "Selected profile"
+msgstr "已选用"
+
+msgid "Standby"
+msgstr "备用"
+
+msgid "Status"
+msgstr "状态"
+
+msgid "Unable to load Xray Simple styles. Please reload the page."
+msgstr "无法加载 Xray Simple 样式，请重新加载页面。"
+
+msgid "Component updates"
+msgstr "组件更新"
+
+msgid "Download and safely install the latest Xray core and Geo database."
+msgstr "下载并安全安装最新的 Xray 核心与 Geo 数据库。"
+
+msgid "Failed to save configuration: "
+msgstr "保存配置失败："
+
+msgid "Invalid port number"
+msgstr "端口号无效"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Update Geo database"
+msgstr "更新 Geo 数据库"
+
+msgid "Update Xray core"
+msgstr "更新 Xray 核心"
+
+msgid "Update all"
+msgstr "更新全部"

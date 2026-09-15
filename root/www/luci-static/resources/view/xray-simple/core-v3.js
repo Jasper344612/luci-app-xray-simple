@@ -9,7 +9,57 @@
 
 const variant = 'xray_simple';
 const initScript = '/etc/init.d/xray_simple';
-const longRunningCommands = ['start_now', 'stop_now', 'restart_now', 'start_tproxy', 'stop_tproxy', 'switch_profile'];
+// The package replaces this filename with a content fingerprint at install time.
+// Wait for CSS before rendering, and surface load errors instead of an unstyled form.
+function loadStyles() {
+    const href = L.resource('view/xray-simple/style.css');
+    const previous = document.getElementById('xray-simple-styles');
+    if (previous && previous.getAttribute('href') === href && previous.sheet) {
+        return Promise.resolve();
+    }
+    if (previous) {
+        previous.remove();
+    }
+    return new Promise(function (resolve, reject) {
+        const link = E('link', { id: 'xray-simple-styles', rel: 'stylesheet', href: href });
+        const timeout = window.setTimeout(failed, 15000);
+        function failed() {
+            window.clearTimeout(timeout);
+            link.remove();
+            reject(new Error(_('Unable to load Xray Simple styles. Please reload the page.')));
+        }
+        link.onload = function () {
+            window.clearTimeout(timeout);
+            resolve();
+        };
+        link.onerror = failed;
+        document.head.appendChild(link);
+    });
+}
+
+// Argon injects dark CSS without a theme attribute. Use the rendered page's
+// foreground brightness, so an explicit light theme also wins over OS dark mode.
+function syncTheme() {
+    const rgb = window.getComputedStyle(document.body).color.match(/[\d.]+/g);
+    if (!rgb || rgb.length < 3) {
+        return;
+    }
+    const brightness = 0.2126 * Number(rgb[0]) + 0.7152 * Number(rgb[1]) + 0.0722 * Number(rgb[2]);
+    document.documentElement.setAttribute('data-xray-simple-theme', brightness > 150 ? 'dark' : 'light');
+}
+
+syncTheme();
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncTheme);
+const themeObserver = new MutationObserver(syncTheme);
+[document.documentElement, document.body].forEach(function (node) {
+    themeObserver.observe(node, { attributes: true, attributeFilter: ['class', 'style', 'data-theme', 'data-darkmode'] });
+});
+
+function showModal(title, children) {
+    return ui.showModal(title, [E('div', { 'class': 'xray-simple-ui xray-simple-dialog' }, children)]);
+}
+
+const longRunningCommands = ['start_now', 'stop_now', 'restart_now', 'start_tproxy', 'stop_tproxy', 'switch_profile', 'update_xray_core', 'update_geodata', 'update_resources'];
 
 /**
  * 校验并解析一个正整数值。如果输入不是正整数，则返回本地化的报错字符串；校验通过则返回 true。
@@ -114,9 +164,9 @@ function commandErrorText(err) {
  * @param {Object|Error} err - 错误对象
  */
 function showCommandError(title, err, reloadAfterClose) {
-    ui.showModal(title, [
-        E('pre', { 'style': 'white-space: pre-wrap' }, commandErrorText(err) || _('Xray Simple command failed')),
-        E('div', { 'class': 'right' }, [
+    showModal(title, [
+        E('pre', { 'class': 'xray-simple-code' }, commandErrorText(err) || _('Xray Simple command failed')),
+        E('div', { 'class': 'xray-simple-dialog-actions' }, [
             E('button', {
                 'type': 'button',
                 'class': 'btn',
@@ -136,8 +186,8 @@ function showCommandError(title, err, reloadAfterClose) {
 }
 
 function showCommandPending() {
-    ui.showModal(_('Xray Simple command is running'), [
-        E('p', {}, _('Waiting for the background command to finish…'))
+    showModal(_('Xray Simple command is running'), [
+        E('p', { 'class': 'spinning', 'role': 'status' }, _('Waiting for the background command to finish…'))
     ]);
 }
 
@@ -172,9 +222,9 @@ function waitForAsyncCommand(command, attempt) {
 function showCommandResult(title, text, reloadAfterClose) {
     // Delay reload until the user closes the modal so short-lived failures and
     // command output remain visible instead of flashing away immediately.
-    ui.showModal(title, [
-        E('pre', { 'style': 'white-space: pre-wrap' }, text || _('Xray Simple command completed')),
-        E('div', { 'class': 'right' }, [
+    showModal(title, [
+        E('pre', { 'class': 'xray-simple-code' }, text || _('Xray Simple command completed')),
+        E('div', { 'class': 'xray-simple-dialog-actions' }, [
             E('button', {
                 'type': 'button',
                 'class': 'btn cbi-button cbi-button-apply',
@@ -257,7 +307,7 @@ function showDnsmasqModal(sectionId) {
         '  ]\n' +
         '}';
 
-    const content = E('div', { 'style': 'width: 100%; padding: 0.5rem 0' }, [
+    const content = E('div', { 'class': 'xray-simple-dns-form' }, [
         E('div', { 'class': 'cbi-map-descr', 'style': 'margin-bottom: 1.5rem' }, _('Use dnsmasq as the LAN DNS frontend and forward its queries to a local Xray DNS inbound.')),
         
         E('div', { 'class': 'cbi-value' }, [
@@ -274,8 +324,7 @@ function showDnsmasqModal(sectionId) {
             E('label', { 'class': 'cbi-value-title' }, _('Runtime behavior')),
             E('div', { 'class': 'cbi-value-field' }, [
                 E('div', {
-                    'class': 'cbi-value-description',
-                    'style': 'border-left:4px solid #4b74c6; background:rgba(75,116,198,.09); padding:.75rem 1rem; line-height:1.55; margin-bottom: 1rem'
+                    'class': 'xray-simple-notice is-info'
                 }, _('Xray Simple keeps /etc/config/dhcp unchanged. It installs a temporary dnsmasq fragment only while Xray is running and removes it when Xray stops or fails to start.'))
             ])
         ]),
@@ -288,12 +337,12 @@ function showDnsmasqModal(sectionId) {
                     'style': 'margin-bottom:.75rem'
                 }, _('Merge the following inbound, routing rule, and outbound into the active Xray JSON yourself. The configured Xray DNS inbound port must match this inbound, and the existing top-level dns configuration must define the required upstream servers.')),
                 E('pre', {
-                    'style': 'white-space:pre; overflow:auto; max-height:20rem; margin:0; background:#f4f4f4; padding:.5rem; border:1px solid #ccc; border-radius:3px'
+                    'class': 'xray-simple-code'
                 }, example)
             ])
         ]),
 
-        E('div', { 'class': 'right' }, [
+        E('div', { 'class': 'xray-simple-dialog-actions' }, [
             E('button', {
                 'type': 'button',
                 'class': 'btn cbi-button',
@@ -337,7 +386,7 @@ function showDnsmasqModal(sectionId) {
         ])
     ]);
 
-    ui.showModal(_('dnsmasq upstream'), [ content ]);
+    showModal(_('dnsmasq upstream'), [ content ]);
 
     window.setTimeout(function() {
         let p = content.parentNode;
@@ -524,8 +573,8 @@ function renderProcessDashboard(initialStatus, generatedNft, nftTitle) {
         return button;
     }
 
-    function actionCard(title, description, buttons) {
-        return E('section', { 'class': 'xray-simple-process-action' }, [
+    function actionCard(title, description, buttons, wide) {
+        return E('section', { 'class': 'xray-simple-process-action' + (wide ? ' is-wide' : '') }, [
             E('div', { 'class': 'xray-simple-process-action-copy' }, [
                 E('strong', {}, title),
                 E('span', {}, description)
@@ -553,58 +602,6 @@ function renderProcessDashboard(initialStatus, generatedNft, nftTitle) {
     }, _('Refresh status'));
 
     const dashboard = E('div', { 'class': 'xray-simple-process-dashboard' }, [
-        E('style', {}, [
-            '.xray-simple-process-frame>.cbi-value-title{display:none}',
-            '.xray-simple-process-frame>.cbi-value-field{width:100%;max-width:none;margin-left:0;min-width:0}',
-            '.xray-simple-process-dashboard{display:flex;flex-direction:column;gap:1rem;width:100%}',
-            '.xray-simple-process-toolbar{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap}',
-            '.xray-simple-process-toolbar h3{margin:0;font-size:1.15rem}',
-            '.xray-simple-process-toolbar-meta{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}',
-            '.xray-simple-process-updated{font-size:.85em;opacity:.65}',
-            '.xray-simple-process-overview{border:1px solid var(--border-color-medium,rgba(0,0,0,.12));border-radius:10px;',
-            'background:var(--background-color-high,#fff);overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)}',
-            '.xray-simple-process-hero{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 1.15rem;',
-            'border-bottom:1px solid var(--border-color-medium,rgba(0,0,0,.09));background:rgba(127,127,127,.045)}',
-            '.xray-simple-process-state{display:flex;align-items:center;gap:.8rem;min-width:0}',
-            '.xray-simple-process-state-dot{width:.8rem;height:.8rem;border-radius:50%;flex:0 0 auto;box-shadow:0 0 0 4px rgba(127,127,127,.12)}',
-            '.xray-simple-process-hero.is-running .xray-simple-process-state-dot{background:#2e9b55;box-shadow:0 0 0 4px rgba(46,155,85,.14)}',
-            '.xray-simple-process-hero.is-stopped .xray-simple-process-state-dot{background:#8a8f98}',
-            '.xray-simple-process-hero.is-unknown .xray-simple-process-state-dot{background:#d89218;box-shadow:0 0 0 4px rgba(216,146,24,.14)}',
-            '.xray-simple-process-state strong,.xray-simple-process-state span{display:block}',
-            '.xray-simple-process-state strong{font-size:1.05em;line-height:1.35}',
-            '.xray-simple-process-state span{font-size:.88em;opacity:.68;margin-top:.15rem}',
-            '.xray-simple-process-pid{font-family:monospace;font-size:.88em;padding:.32rem .55rem;border-radius:5px;',
-            'background:rgba(127,127,127,.11);white-space:nowrap}',
-            '.xray-simple-process-warning{margin:.85rem 1.15rem 0;padding:.65rem .8rem;border-left:4px solid #d89218;',
-            'background:rgba(216,146,24,.10);white-space:pre-wrap;word-break:break-word}',
-            '.xray-simple-process-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;padding:.35rem 1.15rem 1rem}',
-            '.xray-simple-process-info{min-width:0;padding:.75rem .9rem .55rem 0}',
-            '.xray-simple-process-info.is-wide{grid-column:span 2}',
-            '.xray-simple-process-info-label,.xray-simple-process-info-value{display:block}',
-            '.xray-simple-process-info-label{font-size:.78em;opacity:.62;margin-bottom:.28rem}',
-            '.xray-simple-process-info-value{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-            '.xray-simple-process-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}',
-            '.xray-simple-process-action{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.85rem 1rem;',
-            'border:1px solid var(--border-color-medium,rgba(0,0,0,.12));border-radius:8px;background:var(--background-color-high,#fff)}',
-            '.xray-simple-process-action.is-wide{grid-column:1/-1}',
-            '.xray-simple-process-action-copy{display:flex;flex-direction:column;gap:.2rem;min-width:9rem}',
-            '.xray-simple-process-action-copy span{font-size:.84em;opacity:.66;line-height:1.35}',
-            '.xray-simple-process-buttons{display:flex;gap:.45rem;justify-content:flex-end;flex-wrap:wrap}',
-            '.xray-simple-process-details{border:1px solid var(--border-color-medium,rgba(0,0,0,.12));border-radius:8px;overflow:hidden}',
-            '.xray-simple-process-details>summary{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.75rem 1rem;',
-            'cursor:pointer;list-style:none;font-weight:600;background:rgba(127,127,127,.055)}',
-            '.xray-simple-process-details>summary::-webkit-details-marker{display:none}',
-            '.xray-simple-process-details>summary:after{content:"+";font-size:1.2em;font-weight:400;opacity:.65}',
-            '.xray-simple-process-details[open]>summary:after{content:"−"}',
-            '.xray-simple-process-code{max-height:32em;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:0;',
-            'padding:1rem;background:#0d1117;color:#c9d1d9;font-size:.82em;line-height:1.5;border-radius:0}',
-            '@media(max-width:900px){.xray-simple-process-grid{grid-template-columns:repeat(2,minmax(0,1fr))}',
-            '.xray-simple-process-actions{grid-template-columns:1fr}}',
-            '@media(max-width:600px){.xray-simple-process-grid{grid-template-columns:1fr;padding:.25rem .9rem .8rem}',
-            '.xray-simple-process-info.is-wide{grid-column:auto}.xray-simple-process-hero{align-items:flex-start;padding:.9rem}',
-            '.xray-simple-process-action{align-items:flex-start;flex-direction:column}.xray-simple-process-buttons{justify-content:flex-start}',
-            '.xray-simple-process-toolbar{align-items:flex-start;flex-direction:column}}'
-        ].join('')),
         E('div', { 'class': 'xray-simple-process-toolbar' }, [
             E('h3', {}, _('Runtime overview')),
             E('div', { 'class': 'xray-simple-process-toolbar-meta' }, [updatedAt, refreshButton])
@@ -620,6 +617,11 @@ function renderProcessDashboard(initialStatus, generatedNft, nftTitle) {
                 actionButton(_('Start TProxy'), 'start_tproxy', 'apply'),
                 actionButton(_('Stop TProxy'), 'stop_tproxy', 'reset')
             ]),
+            actionCard(_('Component updates'), _('Download and safely install the latest Xray core and Geo database.'), [
+                actionButton(_('Update Xray core'), 'update_xray_core', 'action'),
+                actionButton(_('Update Geo database'), 'update_geodata', 'action'),
+                actionButton(_('Update all'), 'update_resources', 'apply')
+            ], true),
             E('section', { 'class': 'xray-simple-process-action is-wide' }, [
                 E('div', { 'class': 'xray-simple-process-action-copy' }, [
                     E('strong', {}, _('Diagnostics')),
@@ -702,33 +704,6 @@ function groupSystemSettings(root, sectionId, groups) {
         host.appendChild(details);
     });
 
-    host.insertBefore(E('style', {}, [
-        '.xray-simple-settings-group{border:1px solid var(--border-color-medium,rgba(0,0,0,.12));',
-        'border-radius:8px;margin:0 0 1rem 0;background:var(--background-color-high,#fff);overflow:hidden;',
-        'box-shadow:0 1px 3px rgba(0,0,0,.03);transition:border-color .2s ease,box-shadow .2s ease}',
-        '.xray-simple-settings-group:hover{border-color:var(--primary-color-medium,var(--border-color-high,#b0b0b0))}',
-        '.xray-simple-settings-group[open]{box-shadow:0 2px 6px rgba(0,0,0,.05)}',
-        '.xray-simple-settings-group>summary{cursor:pointer;padding:.85rem 1.15rem;list-style:none;',
-        'display:flex;align-items:center;justify-content:space-between;gap:.75rem;',
-        'background:var(--background-color-medium,rgba(127,127,127,.06));user-select:none;',
-        'transition:background-color .2s ease;position:relative}',
-        '.xray-simple-settings-group>summary::-webkit-details-marker{display:none}',
-        '.xray-simple-settings-group>summary:hover{background:var(--background-color-high-hover,rgba(127,127,127,.12))}',
-        '.xray-simple-settings-group[open]>summary{border-bottom:1px solid var(--border-color-medium,rgba(0,0,0,.08));',
-        'background:var(--background-color-medium,rgba(127,127,127,.08))}',
-        '.xray-simple-settings-group-title-wrapper{display:flex;flex-direction:column;gap:.25rem;flex:1}',
-        '.xray-simple-settings-group-title{font-weight:600;font-size:1.02em;color:var(--text-color-high,inherit);line-height:1.3}',
-        '.xray-simple-settings-group-description{font-size:.88em;opacity:.72;font-weight:400;line-height:1.35}',
-        '.xray-simple-settings-group-arrow{display:inline-block;width:8px;height:8px;',
-        'border-right:2px solid var(--text-color-medium,#666);border-bottom:2px solid var(--text-color-medium,#666);',
-        'transform:rotate(-45deg);transition:transform .25s cubic-bezier(.4,0,.2,1);margin-right:.25rem;flex-shrink:0}',
-        '.xray-simple-settings-group[open] .xray-simple-settings-group-arrow{transform:rotate(45deg)}',
-        '.xray-simple-settings-group-content{padding:.6rem 1.15rem .4rem}',
-        '.xray-simple-settings-group-content>.cbi-value:last-child{border-bottom:0}',
-        '@media(max-width:600px){.xray-simple-settings-group>summary{padding:.75rem .85rem}',
-        '.xray-simple-settings-group-content{padding:.4rem .75rem .2rem}}'
-    ].join('')), host.firstChild);
-
     // Native validation events are not shown inside a closed details element.
     // Open the owning group before LuCI focuses or reports the invalid field.
     host.addEventListener('invalid', function (ev) {
@@ -791,7 +766,8 @@ return view.extend({
     load: function () {
         // The view needs both UCI data and live init-script status. Missing
         // runtime files are expected before the service has ever started.
-        return uci.load(variant).then(function () {
+        return Promise.all([loadStyles(), uci.load(variant)]).then(function () {
+            syncTheme();
             return Promise.all([
                 L.resolveDefault(fs.exec(initScript, ['geodata_status']), { stdout: '', stderr: '' }),
                 L.resolveDefault(fs.exec(initScript, ['status']), { stdout: _('Xray Simple status unavailable'), stderr: '' }),
@@ -815,7 +791,7 @@ return view.extend({
         const nftMode = generalConfig.nft_mode || 'firewall4';
         const generatedNft = nftMode === 'direct' ? loadResult[3] : loadResult[2];
         const dnsmasqStatus = loadResult[4];
-        const m = new form.Map(variant, _('Xray Simple'), _('Minimal Xray TProxy management. Xray JSON remains user-owned; this page only manages process and TProxy plumbing.'));
+        const m = new form.Map(variant, _('Xray Simple'), _('Manage your Xray service, traffic policies, and configuration profiles in one place.'));
         let s, ss, o;
 
         s = m.section(form.TypedSection, 'general');
@@ -863,14 +839,12 @@ return view.extend({
 
             if (missing.length === 0) {
                 return E('div', {
-                    'class': 'cbi-value-description',
-                    'style': 'border-left: 4px solid #5cb85c; background: rgba(92, 184, 92, 0.10); padding: .75rem 1rem; border-radius: 6px; max-width: 70em'
+                    'class': 'xray-simple-notice is-success'
                 }, _('Geo database files found in %s.').format(geodataStatus.assetDir));
             }
 
             return E('div', {
-                'class': 'cbi-value-description',
-                'style': 'border-left: 4px solid #f0ad4e; background: rgba(240, 173, 78, 0.12); padding: .75rem 1rem; border-radius: 6px; max-width: 70em; line-height: 1.55'
+                'class': 'xray-simple-notice is-warning'
             }, [
                 E('strong', {}, _('Geo database required: ')),
                 _('Missing %s in %s. If your JSON uses geoip: or geosite: rules, install geodata packages or download the files and place them in this directory.').format(missing.join(', '), geodataStatus.assetDir),
@@ -929,17 +903,14 @@ return view.extend({
             const configured = (generalConfig.dnsmasq_upstream || '0') === '1';
             const active = configured && /status: active/.test(dnsmasqStatus.stdout || '');
             const stateLabel = !configured ? _('Disabled') : active ? _('Active') : _('Inactive');
-            const stateColor = !configured ? '#777' : active ? '#2e7d32' : '#b26a00';
+            const stateClass = !configured ? 'is-muted' : active ? 'is-success' : 'is-warning';
 
             return E('div', {
-                'style': 'display:flex; align-items:center; gap:.75rem; flex-wrap:wrap'
+                'class': 'xray-simple-inline-actions'
             }, [
                 E('span', {
-                    'style': 'display:inline-flex; align-items:center; gap:.4rem; color:' + stateColor + '; font-weight:600'
+                    'class': 'xray-simple-badge ' + stateClass
                 }, [
-                    E('span', {
-                        'style': 'width:.65rem; height:.65rem; border-radius:50%; background:' + stateColor
-                    }),
                     stateLabel
                 ]),
                 E('button', {
@@ -1017,6 +988,18 @@ return view.extend({
         ss.rowactions = true;
         ss.sortable = true;
         ss.nodescriptions = true;
+        ss.renderMoreOptionsModal = function (sectionId, ev) {
+            return form.GridSection.prototype.renderMoreOptionsModal.call(this, sectionId, ev).then(function () {
+                const modalMap = this.getActiveModalMap();
+                if (modalMap) {
+                    modalMap.classList.add('xray-simple-ui');
+                    const actions = modalMap.parentNode.querySelector('.right');
+                    if (actions) {
+                        actions.classList.add('xray-simple-ui', 'xray-simple-dialog-actions');
+                    }
+                }
+            }.bind(this));
+        };
         ss.handleModalSave = function (modalMap, ev) {
             return modalMap.save(null, true).then(function () {
                 return uci.save();
@@ -1058,6 +1041,15 @@ return view.extend({
         o = ss.option(form.Value, 'name', _('Profile name'));
         o.rmempty = false;
 
+        o = ss.option(form.DummyValue, '_profile_state', _('Status'));
+        o.modalonly = false;
+        o.textvalue = function (sectionId) {
+            const active = generalConfig.active_profile === sectionId;
+            return E('span', {
+                'class': 'xray-simple-badge ' + (active ? 'is-info' : 'is-muted')
+            }, active ? _('Selected profile') : _('Standby'));
+        };
+
         o = ss.option(form.DummyValue, '_profile_summary', _('Description'));
         o.modalonly = false;
         o.textvalue = function (sectionId) {
@@ -1075,7 +1067,7 @@ return view.extend({
         o.cfgvalue = function () {
             const outboundMark = generalConfig.outbound_mark || '255';
             return E('div', {
-                'style': 'border-left: 4px solid #f0ad4e; background: rgba(240, 173, 78, 0.12); padding: .6rem .9rem; border-radius: 6px; margin-bottom: .25rem'
+                'class': 'xray-simple-ui xray-simple-notice is-warning'
             }, [
                 E('strong', {}, _('Important: ')),
                 _('All Xray outbounds must set streamSettings.sockopt.mark to the Xray outbound bypass mark, otherwise traffic may loop back into TProxy. Current bypass mark: %s.').format(outboundMark)
@@ -1091,6 +1083,7 @@ return view.extend({
             const node = form.TextValue.prototype.renderWidget.call(this, sectionId, optionId, value);
             const textarea = node.querySelector('textarea') || (node.tagName === 'TEXTAREA' ? node : null);
             if (textarea) {
+                textarea.classList.add('xray-simple-ui', 'xray-simple-editor');
                 textarea.setAttribute('spellcheck', 'false');
                 textarea.setAttribute('autocorrect', 'off');
                 textarea.setAttribute('autocapitalize', 'off');
@@ -1105,7 +1098,7 @@ return view.extend({
         o.modalonly = false;
         o.rawhtml = true;
         o.textvalue = function (sectionId) {
-            return E('div', { 'class': 'cbi-button-group' }, [
+            return E('div', { 'class': 'xray-simple-inline-actions' }, [
                 E('button', {
                     'type': 'button',
                     'class': 'btn cbi-button cbi-button-apply',
@@ -1150,7 +1143,9 @@ return view.extend({
             let refreshButton;
             const logPre = E('pre', {
                 'id': 'xray-simple-log-output',
-                'style': 'min-height: 20em; max-height: 45em; overflow: auto; white-space: pre-wrap; word-break: break-all; background: #0d1117; color: #c9d1d9; padding: 1rem; border-radius: 6px; font-size: 0.82em; font-family: monospace; margin: 0'
+                'class': 'xray-simple-code xray-simple-log-output',
+                'tabindex': '0',
+                'aria-label': _('Xray runtime logs')
             }, _('Loading…'));
 
             function fetchLogs() {
@@ -1186,19 +1181,22 @@ return view.extend({
                 }
             }, _('Refresh'));
 
-            const view = E('div', {}, [
-                E('div', { 'style': 'margin-bottom: 0.6rem; display: flex; gap: 0.5rem' }, [
-                    refreshButton,
-                    E('button', {
-                        'type': 'button',
-                        'class': 'btn cbi-button',
-                        'click': function (ev) {
-                            ev.preventDefault();
-                            requestSerial++;
-                            refreshButton.disabled = false;
-                            logPre.textContent = '';
-                        }
-                    }, _('Clear'))
+            const view = E('div', { 'class': 'xray-simple-logs' }, [
+                E('div', { 'class': 'xray-simple-process-toolbar' }, [
+                    E('h3', {}, _('Xray runtime logs')),
+                    E('div', { 'class': 'xray-simple-inline-actions' }, [
+                        refreshButton,
+                        E('button', {
+                            'type': 'button',
+                            'class': 'btn cbi-button',
+                            'click': function (ev) {
+                                ev.preventDefault();
+                                requestSerial++;
+                                refreshButton.disabled = false;
+                                logPre.textContent = '';
+                            }
+                        }, _('Clear'))
+                    ])
                 ]),
                 logPre
             ]);
@@ -1226,40 +1224,47 @@ return view.extend({
             });
         };
 
-        return Promise.resolve(m.render()).then(function (node) {
-            groupSystemSettings(node, generalConfig['.name'], [
-                {
-                    title: _('Basic Settings'),
-                    description: _('Enable the service and configure the Xray runtime paths.'),
-                    options: ['enabled', 'xray_bin', 'asset_dir', '_geodata_notice']
-                },
-                {
-                    title: _('Logging Settings'),
-                    description: _('Choose where Xray writes its runtime output.'),
-                    options: ['system_log', 'runtime_log_file']
-                },
-                {
-                    title: _('DNS & Forced Proxy'),
-                    description: _('Configure LAN DNS handling, FakeDNS detection, and always-proxied networks.'),
-                    options: ['_dnsmasq_upstream', 'proxy_lan_dns', 'fakedns_auto_detect', 'proxy_ipv4', 'proxy_ipv6']
-                },
-                {
-                    title: _('Traffic Policy'),
-                    description: _('Choose the proxy interfaces and which router-local traffic is proxied or bypassed.'),
-                    options: ['lan_ifaces', 'proxy_router_output', 'bypass_uids', 'bypass_gids', 'bypass_ipv4', 'bypass_ipv6']
-                },
-                {
-                    title: _('TProxy Advanced Settings'),
-                    description: _('Low-level nftables and policy-routing parameters. The defaults are recommended.'),
-                    options: ['nft_mode', 'tproxy_port', 'mark', 'outbound_mark', 'route_table_v4', 'route_table_v6']
-                }
-            ]);
-            const dashboard = node.querySelector('.xray-simple-process-dashboard');
-            const processFrame = dashboard ? dashboard.closest('.cbi-value') : null;
-            if (processFrame) {
-                processFrame.classList.add('xray-simple-process-frame');
-            }
-            return node;
-        });
+        // Reapply grouping after LuCI resets or redraws the map as well.
+        const renderContents = m.renderContents;
+        m.renderContents = function () {
+            return Promise.resolve(renderContents.apply(this, arguments)).then(function (node) {
+                groupSystemSettings(node, generalConfig['.name'], [
+                    {
+                        title: _('Basic Settings'),
+                        description: _('Enable the service and configure the Xray runtime paths.'),
+                        options: ['enabled', 'xray_bin', 'asset_dir', '_geodata_notice']
+                    },
+                    {
+                        title: _('Logging Settings'),
+                        description: _('Choose where Xray writes its runtime output.'),
+                        options: ['system_log', 'runtime_log_file']
+                    },
+                    {
+                        title: _('DNS & Forced Proxy'),
+                        description: _('Configure LAN DNS handling, FakeDNS detection, and always-proxied networks.'),
+                        options: ['_dnsmasq_upstream', 'proxy_lan_dns', 'fakedns_auto_detect', 'proxy_ipv4', 'proxy_ipv6']
+                    },
+                    {
+                        title: _('Traffic Policy'),
+                        description: _('Choose the proxy interfaces and which router-local traffic is proxied or bypassed.'),
+                        options: ['lan_ifaces', 'proxy_router_output', 'bypass_uids', 'bypass_gids', 'bypass_ipv4', 'bypass_ipv6']
+                    },
+                    {
+                        title: _('TProxy Advanced Settings'),
+                        description: _('Low-level nftables and policy-routing parameters. The defaults are recommended.'),
+                        options: ['nft_mode', 'tproxy_port', 'mark', 'outbound_mark', 'route_table_v4', 'route_table_v6']
+                    }
+                ]);
+                node.classList.add('xray-simple-ui', 'xray-simple-page');
+                node.querySelectorAll('.xray-simple-process-dashboard, .xray-simple-logs').forEach(function (panel) {
+                    const frame = panel.closest('.cbi-value');
+                    if (frame) {
+                        frame.classList.add('xray-simple-full-width');
+                    }
+                });
+                return node;
+            });
+        };
+        return m.render();
     }
 });

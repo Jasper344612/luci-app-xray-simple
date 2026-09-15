@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-xray-simple
 PKG_VERSION:=0.1.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_LICENSE:=MPL-2.0
 PKG_LICENSE_FILES:=LICENSE
@@ -16,7 +16,7 @@ define Package/$(PKG_NAME)
 	SECTION:=Custom
 	CATEGORY:=Extra packages
 	TITLE:=Simple LuCI support for Xray TProxy
-	DEPENDS:=+firewall4 +ip-full +kmod-nft-tproxy +luci-base
+	DEPENDS:=+firewall4 +ip-full +kmod-nft-tproxy +luci-base +ca-bundle +unzip +jsonfilter
 	PKGARCH:=all
 endef
 
@@ -70,13 +70,16 @@ define Package/$(PKG_NAME)/install
 	$(INSTALL_DIR) $(1)/etc/uci-defaults
 	$(INSTALL_BIN) ./root/etc/uci-defaults/xray_simple $(1)/etc/uci-defaults/xray_simple
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
-	$(INSTALL_DATA) ./root/usr/share/luci/menu.d/luci-app-xray-simple.json $(1)/usr/share/luci/menu.d/luci-app-xray-simple.json
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
 	$(INSTALL_DATA) ./root/usr/share/rpcd/acl.d/luci-app-xray-simple.json $(1)/usr/share/rpcd/acl.d/luci-app-xray-simple.json
 	$(INSTALL_DIR) $(1)/usr/share/nftables.d/table-pre
 	$(INSTALL_DATA) ./root/usr/share/nftables.d/table-pre/xray_simple.nft $(1)/usr/share/nftables.d/table-pre/xray_simple.nft
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/xray-simple
-	$(INSTALL_DATA) ./root/www/luci-static/resources/view/xray-simple/*.js $(1)/www/luci-static/resources/view/xray-simple/
+	# Fingerprint both assets together so LuCI and the browser never mix releases.
+	asset_id=$$$$(cat ./root/www/luci-static/resources/view/xray-simple/core-v3.js ./root/www/luci-static/resources/view/xray-simple/style.css | sha256sum | cut -c1-12); \
+	$(INSTALL_DATA) ./root/www/luci-static/resources/view/xray-simple/style.css $(1)/www/luci-static/resources/view/xray-simple/style-$$$$asset_id.css; \
+	sed "s/style\.css/style-$$$$asset_id.css/g" ./root/www/luci-static/resources/view/xray-simple/core-v3.js > $(1)/www/luci-static/resources/view/xray-simple/core-$$$$asset_id.js; \
+	sed "s@xray-simple/core-v3@xray-simple/core-$$$$asset_id@g" ./root/usr/share/luci/menu.d/luci-app-xray-simple.json > $(1)/usr/share/luci/menu.d/luci-app-xray-simple.json
 endef
 
 define Package/$(PKG_NAME)-zh/postinst
